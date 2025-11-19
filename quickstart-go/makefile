@@ -18,6 +18,9 @@ MACOS_DIR = $(CONTENTS_DIR)/MacOS
 RESOURCES_DIR = $(CONTENTS_DIR)/Resources
 DMG_NAME = $(APP_NAME).dmg
 DMG_WRITABLE = $(APP_NAME)_writeable.dmg
+ICON_ICO = resources/app-icon.ico
+ICON_ICNS = resources/app-icon.icns
+ICON_NAME = app-icon
 
 # Default target
 help:
@@ -58,7 +61,7 @@ clean:
 	@rm -rf $(BIN_DIR)
 	@rm -rf $(APP_BUNDLE)
 	@rm -f $(APP_NAME) $(APP_NAME).exe
-	@rm -f $(DMG_NAME) $(DMG_WRITABLE)
+	@rm -f $(DMG_NAME) $(DMG_WRITABLE) $(ICON_ICNS)
 	@go clean -cache
 	@echo "Clean complete"
 
@@ -90,6 +93,38 @@ dmg: build
 	@if [ -d "resources" ]; then \
 		cp -r resources "$(RESOURCES_DIR)/"; \
 	fi
+	@# Convert icon from .ico to .icns for macOS
+	@if [ -f "$(ICON_ICO)" ]; then \
+		echo "Converting icon to .icns format..."; \
+		if sips -s format icns "$(ICON_ICO)" --out "$(ICON_ICNS)" > /dev/null 2>&1; then \
+			echo "Icon converted successfully"; \
+		else \
+			echo "Warning: Direct conversion failed. Creating iconset..."; \
+			ICONSET_DIR=$$(mktemp -d)/$(ICON_NAME).iconset; \
+			mkdir -p "$$ICONSET_DIR"; \
+			trap "rm -rf $$(dirname $$ICONSET_DIR)" EXIT; \
+			sips -z 16 16 "$(ICON_ICO)" --out "$$ICONSET_DIR/icon_16x16.png" > /dev/null 2>&1; \
+			sips -z 32 32 "$(ICON_ICO)" --out "$$ICONSET_DIR/icon_16x16@2x.png" > /dev/null 2>&1; \
+			sips -z 32 32 "$(ICON_ICO)" --out "$$ICONSET_DIR/icon_32x32.png" > /dev/null 2>&1; \
+			sips -z 64 64 "$(ICON_ICO)" --out "$$ICONSET_DIR/icon_32x32@2x.png" > /dev/null 2>&1; \
+			sips -z 128 128 "$(ICON_ICO)" --out "$$ICONSET_DIR/icon_128x128.png" > /dev/null 2>&1; \
+			sips -z 256 256 "$(ICON_ICO)" --out "$$ICONSET_DIR/icon_128x128@2x.png" > /dev/null 2>&1; \
+			sips -z 256 256 "$(ICON_ICO)" --out "$$ICONSET_DIR/icon_256x256.png" > /dev/null 2>&1; \
+			sips -z 512 512 "$(ICON_ICO)" --out "$$ICONSET_DIR/icon_256x256@2x.png" > /dev/null 2>&1; \
+			sips -z 512 512 "$(ICON_ICO)" --out "$$ICONSET_DIR/icon_512x512.png" > /dev/null 2>&1; \
+			sips -z 1024 1024 "$(ICON_ICO)" --out "$$ICONSET_DIR/icon_512x512@2x.png" > /dev/null 2>&1; \
+			if iconutil -c icns "$$ICONSET_DIR" -o "$(ICON_ICNS)" 2>/dev/null; then \
+				echo "Icon converted via iconset"; \
+			else \
+				echo "Warning: Icon conversion failed, app will use default icon"; \
+			fi; \
+			rm -rf "$$(dirname $$ICONSET_DIR)"; \
+		fi; \
+		if [ -f "$(ICON_ICNS)" ]; then \
+			cp "$(ICON_ICNS)" "$(RESOURCES_DIR)/$(ICON_NAME).icns"; \
+			echo "Icon copied to app bundle"; \
+		fi; \
+	fi
 	@# Create Info.plist
 	@echo '<?xml version="1.0" encoding="UTF-8"?>' > "$(CONTENTS_DIR)/Info.plist"
 	@echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' >> "$(CONTENTS_DIR)/Info.plist"
@@ -113,6 +148,10 @@ dmg: build
 	@echo '	<string>10.9</string>' >> "$(CONTENTS_DIR)/Info.plist"
 	@echo '	<key>NSHumanReadableCopyright</key>' >> "$(CONTENTS_DIR)/Info.plist"
 	@echo '	<string>$(COPYRIGHT)</string>' >> "$(CONTENTS_DIR)/Info.plist"
+	@if [ -f "$(RESOURCES_DIR)/$(ICON_NAME).icns" ]; then \
+		echo '	<key>CFBundleIconFile</key>' >> "$(CONTENTS_DIR)/Info.plist"; \
+		echo '	<string>$(ICON_NAME)</string>' >> "$(CONTENTS_DIR)/Info.plist"; \
+	fi
 	@echo '</dict>' >> "$(CONTENTS_DIR)/Info.plist"
 	@echo '</plist>' >> "$(CONTENTS_DIR)/Info.plist"
 	@# Clean up any existing DMG files
