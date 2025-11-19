@@ -40,6 +40,11 @@ build:
 	@echo "Building $(APP_NAME)..."
 	@mkdir -p $(BIN_DIR)
 	@CGO_ENABLED=1 go build -o $(BIN_DIR)/$(APP_NAME) main.go
+	@# Copy resources to build output directory
+	@if [ -d "resources" ]; then \
+		mkdir -p $(BIN_DIR)/resources; \
+		cp -r resources/* $(BIN_DIR)/resources/; \
+	fi
 	@echo "Built: $(BIN_DIR)/$(APP_NAME)"
 
 # Build and run the application

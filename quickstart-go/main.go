@@ -14,8 +14,26 @@ func main() {
 	// Create the window and OpenGL context
 	rl.InitWindow(1280, 800, "Hello Raylib")
 
-	// Utility function to find the resources folder and set it as the current working directory
-	searchAndSetResourceDir("resources")
+	// Set working directory to resources folder if it exists
+	// For macOS app bundles, resources are in Contents/Resources/resources/
+	// For development builds, resources are copied next to the executable
+	if exePath, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exePath)
+		// Check macOS app bundle Resources directory
+		resourcesPath := filepath.Join(exeDir, "..", "Resources", "resources")
+		if absPath, err := filepath.Abs(resourcesPath); err == nil && dirExists(absPath) {
+			os.Chdir(absPath)
+		} else if resourcesPath := filepath.Join(exeDir, "resources"); dirExists(resourcesPath) {
+			// Check next to executable (development build)
+			os.Chdir(resourcesPath)
+		} else if dirExists("resources") {
+			// Check current directory (fallback)
+			os.Chdir("resources")
+		}
+	} else if dirExists("resources") {
+		// Fallback: check current directory
+		os.Chdir("resources")
+	}
 
 	// Load a texture from the resources directory
 	wabbit := rl.LoadTexture("wabbit_alpha.png")
@@ -46,56 +64,6 @@ func main() {
 	rl.CloseWindow()
 }
 
-// searchAndSetResourceDir looks for the specified resource dir in several common locations:
-// - The working dir
-// - The app dir
-// - Up to 3 levels above the app dir
-// When found the dir will be set as the working dir so that assets can be loaded relative to that.
-func searchAndSetResourceDir(folderName string) bool {
-	// Check the working dir
-	if dirExists(folderName) {
-		os.Chdir(folderName)
-		return true
-	}
-
-	// Get the application directory
-	appDir, err := os.Executable()
-	if err != nil {
-		return false
-	}
-	appDir = filepath.Dir(appDir)
-
-	// Check the application dir
-	dir := filepath.Join(appDir, folderName)
-	if dirExists(dir) {
-		os.Chdir(dir)
-		return true
-	}
-
-	// Check one up from the app dir
-	dir = filepath.Join(appDir, "..", folderName)
-	if dirExists(dir) {
-		os.Chdir(dir)
-		return true
-	}
-
-	// Check two up from the app dir
-	dir = filepath.Join(appDir, "..", "..", folderName)
-	if dirExists(dir) {
-		os.Chdir(dir)
-		return true
-	}
-
-	// Check three up from the app dir
-	dir = filepath.Join(appDir, "..", "..", "..", folderName)
-	if dirExists(dir) {
-		os.Chdir(dir)
-		return true
-	}
-
-	return false
-}
-
 // dirExists checks if a directory exists
 func dirExists(path string) bool {
 	info, err := os.Stat(path)
@@ -104,4 +72,3 @@ func dirExists(path string) bool {
 	}
 	return info.IsDir()
 }
-

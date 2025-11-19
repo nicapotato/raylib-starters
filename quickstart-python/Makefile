@@ -57,6 +57,7 @@ install: check-uv
 # Run the application
 run: install
 	@echo "Running $(APP_NAME)..."
+	@# Ensure resources are accessible (they should be in the project root)
 	@uv run python $(MAIN_FILE)
 
 # Clean virtual environment and build artifacts

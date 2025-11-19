@@ -45,12 +45,22 @@ help:
 build:
 	@echo "Building $(APP_NAME) (debug)..."
 	@cargo build
+	@# Copy resources to build output directory
+	@if [ -d "resources" ]; then \
+		mkdir -p target/debug/resources; \
+		cp -r resources/* target/debug/resources/; \
+	fi
 	@echo "Built: target/debug/$(APP_NAME)"
 
 # Build the release executable
 install:
 	@echo "Building $(APP_NAME) (release)..."
 	@cargo build --release
+	@# Copy resources to build output directory
+	@if [ -d "resources" ]; then \
+		mkdir -p target/release/resources; \
+		cp -r resources/* target/release/resources/; \
+	fi
 	@echo "Built: $(EXECUTABLE)"
 
 # Build and run the application

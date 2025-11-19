@@ -11,49 +11,6 @@ from pathlib import Path
 from pyray import *
 
 
-def search_and_set_resource_dir(folder_name: str) -> bool:
-    """
-    Looks for the specified resource dir in several common locations:
-    - The working dir
-    - The app dir
-    - Up to 3 levels above the app dir
-    When found the dir will be set as the working dir so that assets can be loaded relative to that.
-    """
-    # Check the working dir
-    if os.path.isdir(folder_name):
-        os.chdir(folder_name)
-        return True
-
-    # Get the application directory
-    app_dir = Path(__file__).resolve().parent
-
-    # Check the application dir
-    dir_path = app_dir / folder_name
-    if dir_path.is_dir():
-        os.chdir(str(dir_path))
-        return True
-
-    # Check one up from the app dir
-    dir_path = app_dir.parent / folder_name
-    if dir_path.is_dir():
-        os.chdir(str(dir_path))
-        return True
-
-    # Check two up from the app dir
-    dir_path = app_dir.parent.parent / folder_name
-    if dir_path.is_dir():
-        os.chdir(str(dir_path))
-        return True
-
-    # Check three up from the app dir
-    dir_path = app_dir.parent.parent.parent / folder_name
-    if dir_path.is_dir():
-        os.chdir(str(dir_path))
-        return True
-
-    return False
-
-
 def main():
     # Tell the window to use vsync and work on high DPI displays
     set_config_flags(ConfigFlags.FLAG_VSYNC_HINT | ConfigFlags.FLAG_WINDOW_HIGHDPI)
@@ -61,8 +18,20 @@ def main():
     # Create the window and OpenGL context
     init_window(1280, 800, "Hello Raylib")
 
-    # Utility function to find the resources folder and set it as the current working directory
-    search_and_set_resource_dir("resources")
+    # Set working directory to resources folder if it exists
+    # For macOS app bundles, resources are in Contents/Resources/resources/
+    # For development, resources are in the project root
+    script_dir = Path(__file__).resolve().parent
+    # Check macOS app bundle Resources directory
+    resources_path = script_dir.parent.parent / "Resources" / "resources"
+    if resources_path.is_dir():
+        os.chdir(str(resources_path))
+    elif (script_dir / "resources").is_dir():
+        # Check next to script (development)
+        os.chdir(str(script_dir / "resources"))
+    elif Path("resources").is_dir():
+        # Check current directory (fallback)
+        os.chdir("resources")
 
     # Load a texture from the resources directory
     wabbit = load_texture("wabbit_alpha.png")
