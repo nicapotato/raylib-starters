@@ -38,7 +38,7 @@ endif
 
 PROJECTS := raylib-quickstart raylib
 
-.PHONY: all clean help dmg $(PROJECTS) 
+.PHONY: all clean help run dmg $(PROJECTS) 
 
 all: $(PROJECTS)
 
@@ -46,6 +46,11 @@ raylib-quickstart: raylib
 ifneq (,$(raylib_quickstart_config))
 	@echo "==== Building raylib-quickstart ($(raylib_quickstart_config)) ===="
 	@${MAKE} --no-print-directory -C build/build_files -f raylib-quickstart.make config=$(raylib_quickstart_config)
+	@# Rename executable to match APP_NAME
+	@if [ -f "bin/$(BUILD_CONFIG)/raylib-quickstart" ] && [ ! -f "$(EXECUTABLE)" ]; then \
+		mv "bin/$(BUILD_CONFIG)/raylib-quickstart" "$(EXECUTABLE)"; \
+		echo "Renamed executable to $(APP_NAME)"; \
+	fi
 endif
 
 raylib:
@@ -57,6 +62,8 @@ endif
 clean:
 	@${MAKE} --no-print-directory -C build/build_files -f raylib-quickstart.make clean
 	@${MAKE} --no-print-directory -C build/build_files -f raylib.make clean
+	@rm -rf "$(APP_BUNDLE)"
+	@rm -f "$(DMG_NAME)" "$(DMG_WRITABLE)"
 
 # Extract build configuration (Debug/Release) from config
 ifeq ($(findstring debug,$(config)),debug)
@@ -68,10 +75,10 @@ else
 endif
 
 # Application metadata from application.rc
-APP_NAME = raylib-quickstart
-PRODUCT_NAME = raylib-quickstart
+APP_NAME = raylib-quickstart-c
+PRODUCT_NAME = raylib-quickstart-c
 PRODUCT_VERSION = 1.0.0
-BUNDLE_ID = com.yourname.raylib-quickstart
+BUNDLE_ID = com.yourname.raylib-quickstart-c
 COPYRIGHT = (c) 2025 YOUR NAME
 
 # Paths
@@ -83,7 +90,7 @@ RESOURCES_DIR = $(CONTENTS_DIR)/Resources
 DMG_NAME = $(APP_NAME).dmg
 DMG_WRITABLE = $(APP_NAME)_writeable.dmg
 
-dmg: $(EXECUTABLE)
+dmg: raylib-quickstart
 	@echo "==== Creating macOS DMG package ===="
 	@if [ ! -f "$(EXECUTABLE)" ]; then \
 		echo "Error: Executable not found at $(EXECUTABLE)"; \
@@ -99,9 +106,15 @@ dmg: $(EXECUTABLE)
 	@# Copy executable
 	@cp "$(EXECUTABLE)" "$(MACOS_DIR)/$(APP_NAME)"
 	@chmod +x "$(MACOS_DIR)/$(APP_NAME)"
-	@# Copy resources
+	@# Copy resources to multiple locations so SearchAndSetResourceDir can find them
 	@if [ -d "resources" ]; then \
 		cp -r resources "$(RESOURCES_DIR)/"; \
+		cp -r resources "$(MACOS_DIR)/"; \
+	fi
+	@# Also copy resources from bin directory if they exist (for release builds)
+	@if [ -d "$(shell dirname $(EXECUTABLE))/resources" ]; then \
+		cp -r "$(shell dirname $(EXECUTABLE))/resources" "$(RESOURCES_DIR)/" 2>/dev/null || true; \
+		cp -r "$(shell dirname $(EXECUTABLE))/resources" "$(MACOS_DIR)/" 2>/dev/null || true; \
 	fi
 	@# Create Info.plist
 	@echo '<?xml version="1.0" encoding="UTF-8"?>' > "$(CONTENTS_DIR)/Info.plist"
@@ -130,22 +143,27 @@ dmg: $(EXECUTABLE)
 	@echo '</plist>' >> "$(CONTENTS_DIR)/Info.plist"
 	@# Clean up any existing DMG files
 	@rm -f "$(DMG_NAME)" "$(DMG_WRITABLE)"
-	@# Create writable DMG
-	@echo "Creating DMG image..."
-	@hdiutil create -size 32m -fs HFS+ -volname '$(PRODUCT_NAME)' "$(DMG_WRITABLE)" > /dev/null 2>&1 || \
-		hdiutil create -size 32m -fs HFS+ -volname '$(PRODUCT_NAME)' "$(DMG_WRITABLE)"
-	@# Attach DMG and get disk number
-	@ATTACH_OUTPUT=$$(hdiutil attach "$(DMG_WRITABLE)" 2>&1); \
-	DISK_NUM=$$(echo "$$ATTACH_OUTPUT" | grep -o '/dev/disk[0-9]*' | head -1); \
-	VOLUME_PATH="/Volumes/$(PRODUCT_NAME)"; \
-	sleep 2; \
-	cp -r "$(APP_BUNDLE)" "$$VOLUME_PATH/"; \
-	ln -s /Applications "$$VOLUME_PATH/Applications"; \
-	hdiutil detach "$$DISK_NUM" > /dev/null 2>&1; \
-	echo "Converting to compressed DMG..."; \
-	hdiutil convert "$(DMG_WRITABLE)" -format UDZO -o "$(DMG_NAME)" > /dev/null 2>&1 || hdiutil convert "$(DMG_WRITABLE)" -format UDZO -o "$(DMG_NAME)"; \
-	rm -f "$(DMG_WRITABLE)"; \
+	@# Create a temporary directory with app bundle and Applications symlink
+	@TEMP_DIR=$$(mktemp -d); \
+	trap "rm -rf $$TEMP_DIR" EXIT; \
+	cp -R "$(APP_BUNDLE)" "$$TEMP_DIR/"; \
+	ln -s /Applications "$$TEMP_DIR/Applications"; \
+	echo "Creating DMG image..."; \
+	hdiutil create -srcfolder "$$TEMP_DIR" -volname '$(PRODUCT_NAME)' -fs HFS+ -format UDZO -o "$(DMG_NAME)" > /dev/null 2>&1 || \
+	hdiutil create -srcfolder "$$TEMP_DIR" -volname '$(PRODUCT_NAME)' -fs HFS+ -format UDZO -o "$(DMG_NAME)"; \
+	rm -rf "$$TEMP_DIR"; \
 	echo "DMG created successfully: $(DMG_NAME)"
+
+run: raylib-quickstart
+	@echo "==== Running $(APP_NAME) ===="
+	@if [ ! -f "$(EXECUTABLE)" ]; then \
+		echo "Error: Executable not found at $(EXECUTABLE)"; \
+		echo "Please build the project first with: make config=$(config)"; \
+		exit 1; \
+	fi
+	@echo "Running $(EXECUTABLE)..."
+	@EXEC_DIR="$(shell dirname $(EXECUTABLE))"; \
+	cd "$$EXEC_DIR" && ./$(APP_NAME)
 
 help:
 	@echo "Usage: make [config=name] [target]"
@@ -163,6 +181,7 @@ help:
 	@echo "   clean"
 	@echo "   raylib-quickstart"
 	@echo "   raylib"
+	@echo "   run              - Build and run the application"
 	@echo "   dmg              - Create macOS DMG package (macOS only)"
 	@echo ""
 	@echo "For more information, see https://github.com/premake/premake-core/wiki"
