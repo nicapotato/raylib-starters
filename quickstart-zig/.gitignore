@@ -1,0 +1,31 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+raylib-quickstart-zig
+raylib-quickstart-zig.exe
+
+# Zig build artifacts
+zig-out/
+zig-cache/
+*.o
+*.a
+
+# macOS app bundle and DMG
+*.app
+*.dmg
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.code-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+
