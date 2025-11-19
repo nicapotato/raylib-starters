@@ -1,0 +1,9 @@
+[project]
+name = "raylib-quickstart-python"
+version = "1.0.0"
+description = "A simple cross-platform template for setting up a raylib project with Python"
+requires-python = ">=3.8"
+dependencies = [
+    "raylib>=5.0.0",
+]
+
