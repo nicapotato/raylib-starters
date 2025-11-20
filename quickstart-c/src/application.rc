@@ -9,13 +9,13 @@ BEGIN
     //BLOCK "080904E4"  // English UK
     BLOCK "040904E4"    // English US
     BEGIN
-      //VALUE "CompanyName", "raylib technologies"
+      VALUE "CompanyName", "Mintricks AI"
       VALUE "FileDescription", "A cool game made with raylib (www.raylib.com)"
       VALUE "FileVersion", "1.0.0"
-      VALUE "InternalName", "cool game"
-      VALUE "LegalCopyright", "(c) 2025 YOUR NAME"
+      VALUE "InternalName", "raylib-quickstart-c"
+      VALUE "LegalCopyright", "(c) 2025 Nicolas Brooks, Mintricks AI"
       //VALUE "OriginalFilename", "raylib_app"
-      VALUE "ProductName", "A cool game"
+      VALUE "ProductName", "raylib-quickstart-c"
       VALUE "ProductVersion", "1.0.0"
     END
   END

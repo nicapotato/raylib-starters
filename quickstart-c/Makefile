@@ -78,8 +78,8 @@ endif
 APP_NAME = raylib-quickstart-c
 PRODUCT_NAME = raylib-quickstart-c
 PRODUCT_VERSION = 1.0.0
-BUNDLE_ID = com.yourname.raylib-quickstart-c
-COPYRIGHT = (c) 2025 YOUR NAME
+BUNDLE_ID = com.mintricksai.raylib-quickstart-c
+COPYRIGHT = (c) 2025 Nicolas Brooks, Mintricks AI
 
 # Paths
 EXECUTABLE = bin/$(BUILD_CONFIG)/$(APP_NAME)
@@ -180,6 +180,33 @@ dmg: raylib-quickstart
 	fi
 	@echo '</dict>' >> "$(CONTENTS_DIR)/Info.plist"
 	@echo '</plist>' >> "$(CONTENTS_DIR)/Info.plist"
+	@# Sign the application bundle
+	@echo "Signing app bundle..."
+	@# Check if Developer ID certificate is available, otherwise use ad-hoc signing
+	@if security find-identity -v -p codesigning | grep -q "Developer ID Application"; then \
+		SIGN_IDENTITY=$$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)".*/\1/'); \
+		echo "Using Developer ID certificate: $$SIGN_IDENTITY"; \
+		codesign --force --deep --sign "$$SIGN_IDENTITY" --options runtime --timestamp "$(APP_BUNDLE)" || \
+		codesign --force --deep --sign "$$SIGN_IDENTITY" --options runtime "$(APP_BUNDLE)"; \
+	else \
+		echo "No Developer ID certificate found, using ad-hoc signing"; \
+		echo "Note: Ad-hoc signed apps may be blocked by Gatekeeper on other Macs"; \
+		codesign --force --deep --sign - --options runtime "$(APP_BUNDLE)"; \
+	fi
+	@# Verify the signature
+	@echo "Verifying app bundle signature..."
+	@if codesign --verify --deep --strict --verbose=2 "$(APP_BUNDLE)" 2>&1; then \
+		echo "Signature verification passed"; \
+	else \
+		echo "Warning: Signature verification failed or incomplete (this is normal for ad-hoc signing)"; \
+	fi
+	@# Check for Gatekeeper issues (informational only)
+	@echo "Checking Gatekeeper status..."
+	@if spctl --assess --verbose "$(APP_BUNDLE)" 2>&1 | grep -q "accepted"; then \
+		echo "Gatekeeper check passed"; \
+	else \
+		echo "Note: Gatekeeper may block this app on other Macs without Developer ID signing"; \
+	fi
 	@# Clean up any existing DMG files
 	@rm -f "$(DMG_NAME)" "$(DMG_WRITABLE)"
 	@# Create a temporary directory with app bundle and Applications symlink
@@ -192,6 +219,31 @@ dmg: raylib-quickstart
 	hdiutil create -srcfolder "$$TEMP_DIR" -volname '$(PRODUCT_NAME)' -fs HFS+ -format UDZO -o "$(DMG_NAME)"; \
 	rm -rf "$$TEMP_DIR"; \
 	echo "DMG created successfully: $(DMG_NAME)"
+	@# Sign the DMG if Developer ID certificate is available
+	@if security find-identity -v -p codesigning | grep -q "Developer ID Application"; then \
+		SIGN_IDENTITY=$$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)".*/\1/'); \
+		echo "Signing DMG with Developer ID..."; \
+		codesign --sign "$$SIGN_IDENTITY" --timestamp "$(DMG_NAME)" || \
+		codesign --sign "$$SIGN_IDENTITY" "$(DMG_NAME)"; \
+		codesign --verify --verbose "$(DMG_NAME)" && echo "DMG signature verified"; \
+	else \
+		echo "DMG not signed (no Developer ID certificate found)"; \
+	fi
+	@echo ""
+	@echo "==== DMG Creation Complete ===="
+	@echo "File: $(DMG_NAME)"
+	@if ! security find-identity -v -p codesigning | grep -q "Developer ID Application"; then \
+		echo ""; \
+		echo "NOTE: This DMG was created with ad-hoc signing."; \
+		echo "For distribution, users may need to:"; \
+		echo "  1. Right-click the app and select 'Open'"; \
+		echo "  2. Or go to System Settings > Privacy & Security and click 'Open Anyway'"; \
+		echo ""; \
+		echo "For proper distribution, consider:"; \
+		echo "  - Enrolling in Apple Developer Program (\$$99/year)"; \
+		echo "  - Obtaining a Developer ID certificate"; \
+		echo "  - Notarizing the app with Apple"; \
+	fi
 
 run: raylib-quickstart
 	@echo "==== Running $(APP_NAME) ===="
