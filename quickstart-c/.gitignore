@@ -1,7 +1,10 @@
 # Build directories
+.vs
 bin/
 build/
 obj/
+raylib/
+release/
 *.o
 *.obj
 *.a
