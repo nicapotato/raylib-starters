@@ -49,6 +49,13 @@ pub fn main() !void {
 
 // searchAndSetResourceDir searches for the resources folder and sets it as the current working directory
 fn searchAndSetResourceDir() !void {
+    // Web: resources are preloaded at root or handled by emscripten virtual fs
+    if (@import("builtin").os.tag == .emscripten) {
+        // Emscripten: Resources are usually preloaded into /resources
+        std.posix.chdir("resources") catch {};
+        return;
+    }
+
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();

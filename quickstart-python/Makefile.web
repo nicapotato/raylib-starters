@@ -1,0 +1,29 @@
+# Makefile.web for raylib-quickstart-python
+#
+# NOTE: Compiling Python to WebAssembly via emcc directly is not supported
+# in the same way as C/C++ or Zig. Python is an interpreted language.
+#
+# To run this project on the web, you typically need:
+# 1. A Python runtime compiled to WASM (like Pyodide).
+# 2. Compatible Raylib bindings for the web runtime.
+#
+# As of now, this usually involves using Pyodide and loading your script.
+# A simple "emcc compile" cannot convert main.py to a standalone .html file
+# without a bundled interpreter.
+#
+# Recommended Approach:
+# Visit https://pyodide.org/ and check for Raylib support or use a
+# community template for Raylib-Python on Web.
+
+all:
+	@echo "----------------------------------------------------------------"
+	@echo "Error: Python cannot be compiled to WASM with a simple Makefile."
+	@echo "Please use a browser-based Python runner like Pyodide."
+	@echo "----------------------------------------------------------------"
+
+clean:
+	@echo "Nothing to clean."
+
+serve:
+	@echo "No build artifacts to serve."
+
