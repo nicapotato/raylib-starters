@@ -42,4 +42,5 @@ Thumbs.db
 
 # Build artifacts
 *.dmg
+*.dmg.sha256
 *.make

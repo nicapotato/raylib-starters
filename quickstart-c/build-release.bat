@@ -67,15 +67,37 @@ if exist "resources" (
     xcopy /s /e /y "resources" "%RELEASE_DIR%\resources" >nul
 )
 
+echo.
+echo [5/5] Creating Distribution ZIP...
+set "ZIP_NAME=raylib-quickstart-c-win-x64.zip"
+if exist "%RELEASE_DIR%\%ZIP_NAME%" del "%RELEASE_DIR%\%ZIP_NAME%"
+powershell Compress-Archive -Path "%RELEASE_DIR%\game.exe", "%RELEASE_DIR%\resources" -DestinationPath "%RELEASE_DIR%\%ZIP_NAME%" -Force
+
+rem Read version from project.conf
+set "VERSION=latest"
+if exist "project.conf" (
+    for /f "tokens=1,2 delims==" %%a in (project.conf) do (
+        if "%%a"=="VERSION" set "VERSION=%%b"
+    )
+)
+
+echo.
+echo [6/5] Uploading to S3 (Version: %VERSION%)...
+echo Uploading to s3://dev-nicapotato-user-content/games/quickstart-c/%VERSION%/windows/
+aws s3 cp "%RELEASE_DIR%\%ZIP_NAME%" "s3://dev-nicapotato-user-content/games/quickstart-c/%VERSION%/windows/"
+if errorlevel 1 (
+    echo [WARNING] S3 upload failed. Make sure AWS CLI is installed and configured.
+) else (
+    echo Upload complete.
+)
+
 echo ===================================================
 echo Build Success!
 echo.
-echo Your shareable game is in the "%RELEASE_DIR%" folder.
+echo Distribution package created: "%RELEASE_DIR%\%ZIP_NAME%"
 echo.
-echo Instructions:
-echo 1. Open the "%RELEASE_DIR%" folder.
-echo 2. Select "game.exe" and the "resources" folder.
-echo 3. Right-click -^> Send to -^> Compressed (zipped) folder.
-echo 4. Send that ZIP file to your friends!
+echo Instructions for users:
+echo 1. Download and Unzip.
+echo 2. Run game.exe.
 echo ===================================================
 pause

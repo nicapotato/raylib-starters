@@ -2,3 +2,4 @@ raylib-quickstart-lua
 *.o
 *.dSYM
 resources/
+external/

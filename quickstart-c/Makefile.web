@@ -44,10 +44,37 @@ LDFLAGS += --shell-file $(RAYLIB_SRC)/minshell.html
 # Source Files
 SRCS = $(SRC_DIR)/main.c
 
+# Version from project.conf
+VERSION := $(shell grep '^VERSION=' project.conf | cut -d= -f2)
+ifeq ($(VERSION),)
+  VERSION := latest
+endif
+S3_BASE_PATH = s3://dev-nicapotato-user-content/games/quickstart-c/$(VERSION)/wasm
+
 # Default Target
-.PHONY: all clean serve kill-port
+.PHONY: all clean serve kill-port package upload
 
 all: $(BUILD_DIR)/$(PROJECT_NAME).html
+
+package: all
+	@echo "Packaging for Web..."
+	@rm -f $(BUILD_DIR)/$(PROJECT_NAME)_wasm.zip
+	@cd $(BUILD_DIR) && zip -r $(PROJECT_NAME)_wasm.zip *
+	@echo "Package created: $(BUILD_DIR)/$(PROJECT_NAME)_wasm.zip"
+
+upload: package
+	@echo "==== Uploading to S3 (Version: $(VERSION)) ===="
+	@if [ ! -f "$(BUILD_DIR)/$(PROJECT_NAME)_wasm.zip" ]; then \
+		echo "Error: Package not found. Please build first."; \
+		exit 1; \
+	fi
+	@echo "Uploading to $(S3_BASE_PATH)/"
+	@aws s3 cp "$(BUILD_DIR)/$(PROJECT_NAME)_wasm.zip" "$(S3_BASE_PATH)/"
+	@aws s3 cp "$(BUILD_DIR)/$(PROJECT_NAME).html" "$(S3_BASE_PATH)/index.html"
+	@aws s3 cp "$(BUILD_DIR)/$(PROJECT_NAME).js" "$(S3_BASE_PATH)/"
+	@aws s3 cp "$(BUILD_DIR)/$(PROJECT_NAME).wasm" "$(S3_BASE_PATH)/"
+	@aws s3 cp "$(BUILD_DIR)/$(PROJECT_NAME).data" "$(S3_BASE_PATH)/"
+	@echo "Upload complete."
 
 kill-port:
 	sleep 2

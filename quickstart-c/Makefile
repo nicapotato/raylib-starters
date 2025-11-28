@@ -93,6 +93,13 @@ ICON_ICO = resources/app-icon.ico
 ICON_ICNS = resources/app-icon.icns
 ICON_NAME = app-icon
 
+# Version from project.conf
+VERSION := $(shell grep '^VERSION=' project.conf | cut -d= -f2)
+ifeq ($(VERSION),)
+  VERSION := latest
+endif
+S3_BASE_PATH = s3://dev-nicapotato-user-content/games/quickstart-c/$(VERSION)/mac-arm64
+
 dmg: raylib-quickstart
 	@echo "==== Creating macOS DMG package ===="
 	@if [ ! -f "$(EXECUTABLE)" ]; then \
@@ -229,6 +236,9 @@ dmg: raylib-quickstart
 	else \
 		echo "DMG not signed (no Developer ID certificate found)"; \
 	fi
+	@echo "Generating SHA256 Checksum..."
+	@shasum -a 256 "$(DMG_NAME)" > "$(DMG_NAME).sha256"
+	@echo "Checksum saved to $(DMG_NAME).sha256"
 	@echo ""
 	@echo "==== DMG Creation Complete ===="
 	@echo "File: $(DMG_NAME)"
@@ -244,6 +254,17 @@ dmg: raylib-quickstart
 		echo "  - Obtaining a Developer ID certificate"; \
 		echo "  - Notarizing the app with Apple"; \
 	fi
+
+upload: dmg
+	@echo "==== Uploading to S3 (Version: $(VERSION)) ===="
+	@if [ ! -f "$(DMG_NAME)" ]; then \
+		echo "Error: DMG not found. Please build first."; \
+		exit 1; \
+	fi
+	@echo "Uploading to $(S3_BASE_PATH)/"
+	@aws s3 cp "$(DMG_NAME)" "$(S3_BASE_PATH)/"
+	@aws s3 cp "$(DMG_NAME).sha256" "$(S3_BASE_PATH)/"
+	@echo "Upload complete."
 
 run: raylib-quickstart
 	@echo "==== Running $(APP_NAME) ===="
