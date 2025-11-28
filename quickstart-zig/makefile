@@ -57,7 +57,6 @@ run: build
 # Clean built binaries and Zig build artifacts
 clean:
 	@echo "Cleaning..."
-	@zig build clean
 	@rm -rf zig-out
 	@rm -rf zig-cache
 	@rm -rf $(APP_BUNDLE)
