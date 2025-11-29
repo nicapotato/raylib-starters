@@ -47,7 +47,7 @@ ifneq (,$(quickstart_cpp_config))
 	@echo "==== Building quickstart-cpp ($(quickstart_cpp_config)) ===="
 	@${MAKE} --no-print-directory -C build/build_files -f quickstart-cpp.make config=$(quickstart_cpp_config)
 	@# Rename executable to match APP_NAME
-	@if [ -f "bin/$(BUILD_CONFIG)/quickstart-cpp" ] && [ ! -f "$(EXECUTABLE)" ]; then \
+	@if [ -f "bin/$(BUILD_CONFIG)/quickstart-cpp" ]; then \
 		mv "bin/$(BUILD_CONFIG)/quickstart-cpp" "$(EXECUTABLE)"; \
 		echo "Renamed executable to $(APP_NAME)"; \
 	fi
@@ -62,6 +62,7 @@ endif
 clean:
 	@${MAKE} --no-print-directory -C build/build_files -f quickstart-cpp.make clean
 	@${MAKE} --no-print-directory -C build/build_files -f raylib.make clean
+	@rm -f "$(EXECUTABLE)"
 	@rm -rf "$(APP_BUNDLE)"
 	@rm -f "$(DMG_NAME)" "$(DMG_WRITABLE)" "$(ICON_ICNS)"
 
@@ -250,6 +251,11 @@ run: quickstart-cpp
 		echo "Error: Executable not found at $(EXECUTABLE)"; \
 		echo "Please build the project first with: make config=$(config)"; \
 		exit 1; \
+	fi
+	@# Ensure resources are up to date in the bin directory
+	@if [ -d "resources" ]; then \
+		mkdir -p "$(shell dirname $(EXECUTABLE))/resources"; \
+		cp -r resources/* "$(shell dirname $(EXECUTABLE))/resources/"; \
 	fi
 	@echo "Running $(EXECUTABLE)..."
 	@EXEC_DIR="$(shell dirname $(EXECUTABLE))"; \

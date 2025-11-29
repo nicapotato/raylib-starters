@@ -17,6 +17,9 @@ fn main() {
         .title("Hello Raylib")
         .vsync()
         .build();
+    
+    // Initialize audio device
+    let mut audio = RaylibAudio::init_audio_device().expect("Could not create audio device");
 
     // Set working directory to resources folder if it exists
     // For macOS app bundles, resources are in Contents/Resources/resources/
@@ -54,9 +57,42 @@ fn main() {
             return;
         }
     };
+    
+    // Load music
+    let mut music = match audio.new_music("crystal_cave_track.mp3") {
+        Ok(music) => music,
+        Err(e) => {
+            eprintln!("Error: Could not load music 'crystal_cave_track.mp3': {:?}", e);
+            return;
+        }
+    };
+    
+    music.play_stream();
+    
+    // State variables
+    let mut position = Vector2::new(400.0, 200.0);
+    let mut velocity = Vector2::new(200.0, 200.0);
+    let mut rotation = 0.0;
 
     // Game loop
     while !rl.window_should_close() {
+        // Update
+        music.update_stream();
+        
+        let delta_time = rl.get_frame_time();
+        
+        position.x += velocity.x * delta_time;
+        position.y += velocity.y * delta_time;
+        rotation += 90.0 * delta_time;
+        
+        // Bounce logic
+        if position.x <= 0.0 || position.x >= rl.get_screen_width() as f32 {
+            velocity.x *= -1.0;
+        }
+        if position.y <= 0.0 || position.y >= rl.get_screen_height() as f32 {
+            velocity.y *= -1.0;
+        }
+
         // Drawing
         let mut d = rl.begin_drawing(&thread);
 
@@ -67,11 +103,13 @@ fn main() {
         d.draw_text("Hello Raylib", 200, 200, 20, Color::WHITE);
 
         // Draw our texture to the screen
-        d.draw_texture(&wabbit, 400, 200, Color::WHITE);
+        // Using draw_texture_pro to support rotation
+        let source = Rectangle::new(0.0, 0.0, wabbit.width as f32, wabbit.height as f32);
+        let dest = Rectangle::new(position.x, position.y, wabbit.width as f32, wabbit.height as f32);
+        let origin = Vector2::new(wabbit.width as f32 / 2.0, wabbit.height as f32 / 2.0);
+        
+        d.draw_texture_pro(&wabbit, source, dest, origin, rotation, Color::WHITE);
     }
 
     // Cleanup happens automatically when variables go out of scope
-    // The texture will be unloaded when wabbit is dropped
-    // The window will be closed when rl is dropped
 }
-

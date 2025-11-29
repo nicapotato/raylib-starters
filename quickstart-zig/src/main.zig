@@ -15,6 +15,10 @@ pub fn main() !void {
     rl.initWindow(1280, 800, "Hello Raylib");
     defer rl.closeWindow(); // Close window and OpenGL context
 
+    // Initialize audio device
+    rl.initAudioDevice();
+    defer rl.closeAudioDevice();
+
     // Set working directory to resources folder if it exists
     // For macOS app bundles, resources are in Contents/Resources/resources/
     // For development builds, resources are copied next to the executable
@@ -28,10 +32,41 @@ pub fn main() !void {
     };
     defer rl.unloadTexture(wabbit);
 
+    // Load music
+    const music = rl.loadMusicStream("crystal_cave_track.mp3") catch |err| {
+        std.debug.print("Error: Could not load music 'crystal_cave_track.mp3': {}\n", .{err});
+        return;
+    };
+    defer rl.unloadMusicStream(music);
+
+    rl.playMusicStream(music);
+
     rl.setTargetFPS(60); // Set our game to run at 60 frames-per-second
+
+    // State variables
+    var position = rl.Vector2{ .x = 400.0, .y = 200.0 };
+    var velocity = rl.Vector2{ .x = 200.0, .y = 200.0 };
+    var rotation: f32 = 0.0;
 
     // Game loop
     while (!rl.windowShouldClose()) { // Run the loop until the user presses ESCAPE or presses the Close button on the window
+        // Update
+        rl.updateMusicStream(music);
+
+        const delta_time = rl.getFrameTime();
+
+        position.x += velocity.x * delta_time;
+        position.y += velocity.y * delta_time;
+        rotation += 90.0 * delta_time;
+
+        // Bounce logic
+        if (position.x <= 0 or position.x >= @as(f32, @floatFromInt(rl.getScreenWidth()))) {
+            velocity.x *= -1;
+        }
+        if (position.y <= 0 or position.y >= @as(f32, @floatFromInt(rl.getScreenHeight()))) {
+            velocity.y *= -1;
+        }
+
         // Drawing
         rl.beginDrawing();
         defer rl.endDrawing();
@@ -43,7 +78,12 @@ pub fn main() !void {
         rl.drawText("Hello Raylib", 200, 200, 20, rl.Color.white);
 
         // Draw our texture to the screen
-        rl.drawTexture(wabbit, 400, 200, rl.Color.white);
+        // Using drawTexturePro to support rotation
+        const source = rl.Rectangle{ .x = 0, .y = 0, .width = @floatFromInt(wabbit.width), .height = @floatFromInt(wabbit.height) };
+        const dest = rl.Rectangle{ .x = position.x, .y = position.y, .width = @floatFromInt(wabbit.width), .height = @floatFromInt(wabbit.height) };
+        const origin = rl.Vector2{ .x = @as(f32, @floatFromInt(wabbit.width)) / 2.0, .y = @as(f32, @floatFromInt(wabbit.height)) / 2.0 };
+
+        rl.drawTexturePro(wabbit, source, dest, origin, rotation, rl.Color.white);
     }
 }
 
@@ -74,7 +114,7 @@ fn searchAndSetResourceDir() !void {
         // Check next to executable (development build)
         const resources_path = try std.fmt.allocPrint(allocator, "{s}/resources", .{exe_dir});
         defer allocator.free(resources_path);
-        
+
         if (std.fs.openDirAbsolute(resources_path, .{})) |_| {
             std.posix.chdir(resources_path) catch {};
             return;
@@ -83,11 +123,10 @@ fn searchAndSetResourceDir() !void {
         // Check macOS app bundle Resources directory
         const bundle_resources_path = try std.fmt.allocPrint(allocator, "{s}/../Resources/resources", .{exe_dir});
         defer allocator.free(bundle_resources_path);
-        
+
         if (std.fs.openDirAbsolute(bundle_resources_path, .{})) |_| {
             std.posix.chdir(bundle_resources_path) catch {};
             return;
         } else |_| {}
     }
 }
-

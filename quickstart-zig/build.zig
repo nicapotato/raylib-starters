@@ -95,7 +95,6 @@ pub fn build(b: *std.Build) !void {
         // Add Raylib library
         emcc_cmd.addArg("-Lzig-out/lib");
         emcc_cmd.addArg("-lraylib");
-        emcc_cmd.addArg(b.fmt("-l{s}", .{app_name})); // Link our own lib
 
         // Emscripten Flags
         emcc_cmd.addArgs(&[_][]const u8{

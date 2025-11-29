@@ -47,7 +47,7 @@ ifneq (,$(raylib_quickstart_config))
 	@echo "==== Building raylib-quickstart ($(raylib_quickstart_config)) ===="
 	@${MAKE} --no-print-directory -C build/build_files -f raylib-quickstart.make config=$(raylib_quickstart_config)
 	@# Rename executable to match APP_NAME
-	@if [ -f "bin/$(BUILD_CONFIG)/raylib-quickstart" ] && [ ! -f "$(EXECUTABLE)" ]; then \
+	@if [ -f "bin/$(BUILD_CONFIG)/raylib-quickstart" ]; then \
 		mv "bin/$(BUILD_CONFIG)/raylib-quickstart" "$(EXECUTABLE)"; \
 		echo "Renamed executable to $(APP_NAME)"; \
 	fi
@@ -62,6 +62,7 @@ endif
 clean:
 	@${MAKE} --no-print-directory -C build/build_files -f raylib-quickstart.make clean
 	@${MAKE} --no-print-directory -C build/build_files -f raylib.make clean
+	@rm -f "$(EXECUTABLE)"
 	@rm -rf "$(APP_BUNDLE)"
 	@rm -f "$(DMG_NAME)" "$(DMG_WRITABLE)" "$(ICON_ICNS)"
 
@@ -272,6 +273,11 @@ run: raylib-quickstart
 		echo "Error: Executable not found at $(EXECUTABLE)"; \
 		echo "Please build the project first with: make config=$(config)"; \
 		exit 1; \
+	fi
+	@# Ensure resources are up to date in the bin directory
+	@if [ -d "resources" ]; then \
+		mkdir -p "$(shell dirname $(EXECUTABLE))/resources"; \
+		cp -r resources/* "$(shell dirname $(EXECUTABLE))/resources/"; \
 	fi
 	@echo "Running $(EXECUTABLE)..."
 	@EXEC_DIR="$(shell dirname $(EXECUTABLE))"; \

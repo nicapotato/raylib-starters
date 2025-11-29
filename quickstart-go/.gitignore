@@ -6,6 +6,7 @@
 *.dylib
 raylib-quickstart-go
 raylib-quickstart-go.exe
+bin/
 
 # Test binary, built with `go test -c`
 *.test

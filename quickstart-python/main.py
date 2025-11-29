@@ -17,6 +17,9 @@ def main():
 
     # Create the window and OpenGL context
     init_window(1280, 800, "Hello Raylib")
+    
+    # Initialize audio device
+    init_audio_device()
 
     # Set working directory to resources folder if it exists
     # For macOS app bundles, resources are in Contents/Resources/resources/
@@ -35,9 +38,33 @@ def main():
 
     # Load a texture from the resources directory
     wabbit = load_texture("wabbit_alpha.png")
+    
+    # Load music
+    music = load_music_stream("crystal_cave_track.mp3")
+    play_music_stream(music)
+    
+    # State variables
+    position = Vector2(400.0, 200.0)
+    velocity = Vector2(200.0, 200.0)
+    rotation = 0.0
 
     # Game loop
     while not window_should_close():  # Run the loop until the user presses ESCAPE or presses the Close button on the window
+        # Update
+        update_music_stream(music)
+        
+        delta_time = get_frame_time()
+        
+        position.x += velocity.x * delta_time
+        position.y += velocity.y * delta_time
+        rotation += 90.0 * delta_time
+        
+        # Bounce logic
+        if position.x <= 0 or position.x >= get_screen_width():
+            velocity.x *= -1
+        if position.y <= 0 or position.y >= get_screen_height():
+            velocity.y *= -1
+
         # Drawing
         begin_drawing()
 
@@ -48,7 +75,12 @@ def main():
         draw_text("Hello Raylib", 200, 200, 20, WHITE)
 
         # Draw our texture to the screen
-        draw_texture(wabbit, 400, 200, WHITE)
+        # Using DrawTexturePro to support rotation
+        source = Rectangle(0, 0, float(wabbit.width), float(wabbit.height))
+        dest = Rectangle(position.x, position.y, float(wabbit.width), float(wabbit.height))
+        origin = Vector2(float(wabbit.width)/2, float(wabbit.height)/2)
+        
+        draw_texture_pro(wabbit, source, dest, origin, rotation, WHITE)
 
         # End the frame and get ready for the next one (display frame, poll input, etc...)
         end_drawing()
@@ -56,6 +88,9 @@ def main():
     # Cleanup
     # Unload our texture so it can be cleaned up
     unload_texture(wabbit)
+    unload_music_stream(music)
+    
+    close_audio_device()
 
     # Destroy the window and cleanup the OpenGL context
     close_window()
@@ -63,4 +98,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -14,6 +14,9 @@ func main() {
 	// Create the window and OpenGL context
 	rl.InitWindow(1280, 800, "Hello Raylib")
 
+	// Initialize audio device
+	rl.InitAudioDevice()
+
 	// Set working directory to resources folder if it exists
 	// For macOS app bundles, resources are in Contents/Resources/resources/
 	// For development builds, resources are copied next to the executable
@@ -38,8 +41,34 @@ func main() {
 	// Load a texture from the resources directory
 	wabbit := rl.LoadTexture("wabbit_alpha.png")
 
+	// Load music
+	music := rl.LoadMusicStream("crystal_cave_track.mp3")
+	rl.PlayMusicStream(music)
+
+	// State variables
+	position := rl.NewVector2(400.0, 200.0)
+	velocity := rl.NewVector2(200.0, 200.0)
+	rotation := float32(0.0)
+
 	// Game loop
 	for !rl.WindowShouldClose() { // Run the loop until the user presses ESCAPE or presses the Close button on the window
+		// Update
+		rl.UpdateMusicStream(music)
+
+		deltaTime := rl.GetFrameTime()
+
+		position.X += velocity.X * deltaTime
+		position.Y += velocity.Y * deltaTime
+		rotation += 90.0 * deltaTime
+
+		// Bounce logic
+		if position.X <= 0 || position.X >= float32(rl.GetScreenWidth()) {
+			velocity.X *= -1
+		}
+		if position.Y <= 0 || position.Y >= float32(rl.GetScreenHeight()) {
+			velocity.Y *= -1
+		}
+
 		// Drawing
 		rl.BeginDrawing()
 
@@ -50,7 +79,12 @@ func main() {
 		rl.DrawText("Hello Raylib", 200, 200, 20, rl.White)
 
 		// Draw our texture to the screen
-		rl.DrawTexture(wabbit, 400, 200, rl.White)
+		// Using DrawTexturePro to support rotation
+		source := rl.NewRectangle(0, 0, float32(wabbit.Width), float32(wabbit.Height))
+		dest := rl.NewRectangle(position.X, position.Y, float32(wabbit.Width), float32(wabbit.Height))
+		origin := rl.NewVector2(float32(wabbit.Width)/2, float32(wabbit.Height)/2)
+
+		rl.DrawTexturePro(wabbit, source, dest, origin, rotation, rl.White)
 
 		// End the frame and get ready for the next one (display frame, poll input, etc...)
 		rl.EndDrawing()
@@ -59,6 +93,9 @@ func main() {
 	// Cleanup
 	// Unload our texture so it can be cleaned up
 	rl.UnloadTexture(wabbit)
+	rl.UnloadMusicStream(music)
+
+	rl.CloseAudioDevice()
 
 	// Destroy the window and cleanup the OpenGL context
 	rl.CloseWindow()

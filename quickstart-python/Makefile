@@ -126,8 +126,7 @@ dmg: install
 			sips -z 128 128 "$(ICON_ICO)" --out "$$ICONSET_DIR/icon_128x128.png" > /dev/null 2>&1; \
 			sips -z 256 256 "$(ICON_ICO)" --out "$$ICONSET_DIR/icon_128x128@2x.png" > /dev/null 2>&1; \
 			sips -z 256 256 "$(ICON_ICO)" --out "$$ICONSET_DIR/icon_256x256.png" > /dev/null 2>&1; \
-			sips -z 512 512 "$(ICON_ICO)" --out "$$ICONSET_DIR/icon_256x256@2x.png" > /dev/null 2>&1; \
-			sips -z 512 512 "$(ICON_ICO)" --out "$$ICONSET_DIR/icon_512x512.png" > /dev/null 2>&1; \
+			sips -z 512 512 "$(ICON_ICO)" --out "$$ICONSET_DIR/icon_512x512@2x.png" > /dev/null 2>&1; \
 			sips -z 1024 1024 "$(ICON_ICO)" --out "$$ICONSET_DIR/icon_512x512@2x.png" > /dev/null 2>&1; \
 			if iconutil -c icns "$$ICONSET_DIR" -o "$(ICON_ICNS)" 2>/dev/null; then \
 				echo "Icon converted via iconset"; \
@@ -188,4 +187,3 @@ dmg: install
 	hdiutil convert "$(DMG_WRITABLE)" -format UDZO -o "$(DMG_NAME)" > /dev/null 2>&1 || hdiutil convert "$(DMG_WRITABLE)" -format UDZO -o "$(DMG_NAME)"; \
 	rm -f "$(DMG_WRITABLE)"; \
 	echo "DMG created successfully: $(DMG_NAME)"
-
