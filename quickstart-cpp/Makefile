@@ -114,6 +114,8 @@ dmg: quickstart-cpp
 	@if [ -d "resources" ]; then \
 		cp -r resources "$(RESOURCES_DIR)/"; \
 		cp -r resources "$(MACOS_DIR)/"; \
+		cp ../resources/crystal_cave_track.mp3 "$(RESOURCES_DIR)/resources/"; \
+		cp ../resources/crystal_cave_track.mp3 "$(MACOS_DIR)/resources/"; \
 	fi
 	@# Also copy resources from bin directory if they exist (for release builds)
 	@if [ -d "$(shell dirname $(EXECUTABLE))/resources" ]; then \
@@ -256,6 +258,7 @@ run: quickstart-cpp
 	@if [ -d "resources" ]; then \
 		mkdir -p "$(shell dirname $(EXECUTABLE))/resources"; \
 		cp -r resources/* "$(shell dirname $(EXECUTABLE))/resources/"; \
+		cp ../resources/crystal_cave_track.mp3 "$(shell dirname $(EXECUTABLE))/resources/"; \
 	fi
 	@echo "Running $(EXECUTABLE)..."
 	@EXEC_DIR="$(shell dirname $(EXECUTABLE))"; \

@@ -63,6 +63,9 @@ pub fn build(b: *std.Build) !void {
             .install_subdir = "resources",
         });
         exe.step.dependOn(&install_resources.step);
+
+        const install_mp3 = b.addInstallFile(b.path("../resources/crystal_cave_track.mp3"), "bin/resources/crystal_cave_track.mp3");
+        exe.step.dependOn(&install_mp3.step);
     }
 
     exe.linkLibrary(raylib_artifact);
@@ -72,6 +75,7 @@ pub fn build(b: *std.Build) !void {
     if (target.result.os.tag != .emscripten) {
         const run_cmd = b.addRunArtifact(exe);
         run_cmd.step.dependOn(b.getInstallStep());
+        run_cmd.cwd = .{ .cwd_relative = b.getInstallPath(.bin, "") };
         if (b.args) |args| run_cmd.addArgs(args);
         const run_step = b.step("run", "Run the app");
         run_step.dependOn(&run_cmd.step);
@@ -142,6 +146,7 @@ pub fn build(b: *std.Build) !void {
             \\cp "zig-out/bin/$APP_NAME" "$APP_NAME.app/Contents/MacOS/"
             \\chmod +x "$APP_NAME.app/Contents/MacOS/$APP_NAME"
             \\if [ -d "resources" ]; then cp -r resources "$APP_NAME.app/Contents/Resources/"; fi
+            \\cp ../resources/crystal_cave_track.mp3 "$APP_NAME.app/Contents/Resources/resources/"
             \\
             \\# Create Info.plist (simplified)
             \\PLIST="$APP_NAME.app/Contents/Info.plist"

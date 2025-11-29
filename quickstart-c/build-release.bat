@@ -65,6 +65,7 @@ echo Packaging resources...
 if exist "resources" (
     if not exist "%RELEASE_DIR%\resources" mkdir "%RELEASE_DIR%\resources"
     xcopy /s /e /y "resources" "%RELEASE_DIR%\resources" >nul
+    copy /y "..\resources\crystal_cave_track.mp3" "%RELEASE_DIR%\resources\" >nul
 )
 
 echo.

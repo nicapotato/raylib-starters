@@ -47,6 +47,7 @@ build:
 	@if [ -d "resources" ]; then \
 		mkdir -p $(BIN_DIR)/resources; \
 		cp -r resources/* $(BIN_DIR)/resources/; \
+		cp ../resources/crystal_cave_track.mp3 $(BIN_DIR)/resources/; \
 	fi
 	@echo "Built: $(BIN_DIR)/$(APP_NAME)"
 
@@ -92,6 +93,7 @@ dmg: build
 	@# Copy resources
 	@if [ -d "resources" ]; then \
 		cp -r resources "$(RESOURCES_DIR)/"; \
+		cp ../resources/crystal_cave_track.mp3 "$(RESOURCES_DIR)/resources/"; \
 	fi
 	@# Convert icon from .ico to .icns for macOS
 	@if [ -f "$(ICON_ICO)" ]; then \

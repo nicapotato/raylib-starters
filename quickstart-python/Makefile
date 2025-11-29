@@ -59,6 +59,8 @@ install: check-uv
 
 # Run the application
 run: install
+	@echo "Copying resources..."
+	@cp ../resources/crystal_cave_track.mp3 resources/
 	@echo "Running $(APP_NAME)..."
 	@# Ensure resources are accessible (they should be in the project root)
 	@uv run python $(MAIN_FILE)
@@ -104,6 +106,7 @@ dmg: install
 	@# Copy resources
 	@if [ -d "resources" ]; then \
 		cp -r resources "$(RESOURCES_DIR)/"; \
+		cp ../resources/crystal_cave_track.mp3 "$(RESOURCES_DIR)/resources/"; \
 	fi
 	@# Copy the entire virtual environment (for standalone distribution)
 	@cp -r $(UV_VENV) "$(RESOURCES_DIR)/.venv"

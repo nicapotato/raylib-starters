@@ -52,6 +52,7 @@ build:
 	@if [ -d "resources" ]; then \
 		mkdir -p target/debug/resources; \
 		cp -r resources/* target/debug/resources/; \
+		cp ../resources/crystal_cave_track.mp3 target/debug/resources/; \
 	fi
 	@echo "Built: target/debug/$(APP_NAME)"
 
@@ -63,6 +64,7 @@ install:
 	@if [ -d "resources" ]; then \
 		mkdir -p target/release/resources; \
 		cp -r resources/* target/release/resources/; \
+		cp ../resources/crystal_cave_track.mp3 target/release/resources/; \
 	fi
 	@echo "Built: $(EXECUTABLE)"
 
@@ -108,6 +110,7 @@ dmg: install
 	@# Copy resources
 	@if [ -d "resources" ]; then \
 		cp -r resources "$(RESOURCES_DIR)/"; \
+		cp ../resources/crystal_cave_track.mp3 "$(RESOURCES_DIR)/resources/"; \
 	fi
 	@# Convert icon from .ico to .icns for macOS
 	@if [ -f "$(ICON_ICO)" ]; then \

@@ -44,6 +44,9 @@ setup_resources:
 		echo "Copying resources from quickstart-c..."; \
 		cp -r ../quickstart-c/resources .; \
 	fi
+	@echo "Copying shared resources..."
+	@mkdir -p resources
+	@cp ../resources/crystal_cave_track.mp3 resources/
 
 $(TARGET): $(SRC)
 	$(CC) $(CFLAGS) $(SRC) -o $(TARGET) $(LDFLAGS)

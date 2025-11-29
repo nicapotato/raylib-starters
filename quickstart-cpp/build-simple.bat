@@ -65,6 +65,9 @@ if errorlevel 1 (
 echo [5/5] Running game...
 echo ===================================================
 cd "%BIN_DIR%"
+if not exist "resources" mkdir "resources"
+xcopy /s /e /y "..\resources" "resources" >nul
+copy /y "..\..\resources\crystal_cave_track.mp3" "resources\" >nul
 game.exe
 cd ..
 echo ===================================================

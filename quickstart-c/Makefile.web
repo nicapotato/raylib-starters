@@ -39,6 +39,7 @@ CFLAGS += -I$(INCLUDE_DIR) -I$(RAYLIB_SRC) -I$(RAYLIB_SRC)/external
 LDFLAGS = -L$(RAYLIB_SRC) -lraylib.web
 LDFLAGS += -s USE_GLFW=3 -s WASM=1 -s ALLOW_MEMORY_GROWTH=1 -s ASYNCIFY
 LDFLAGS += --preload-file $(RESOURCES_DIR)
+LDFLAGS += --preload-file ../resources/crystal_cave_track.mp3@resources/crystal_cave_track.mp3
 LDFLAGS += --shell-file $(RAYLIB_SRC)/minshell.html
 
 # Source Files

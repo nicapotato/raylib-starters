@@ -43,4 +43,5 @@ Thumbs.db
 *.app
 *.dmg
 
-
+# Resources copied from parent
+resources/*.mp3
