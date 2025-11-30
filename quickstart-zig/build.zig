@@ -108,6 +108,8 @@ pub fn build(b: *std.Build) !void {
             "-s",             "ASYNCIFY",
             "-s",             "USE_WEBGL2=1",
             "--preload-file", "resources",
+            "--preload-file", "../resources/crystal_cave_track.mp3@resources/crystal_cave_track.mp3",
+            "--shell-file",   "minshell.html",
             "-Os", // Optimize for size
         });
 
