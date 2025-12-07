@@ -16,7 +16,7 @@ endif
 
 # S3 Configuration
 S3_BUCKET = s3://dev-nicapotato-user-content
-S3_BASE_PATH = $(S3_BUCKET)/games/quickstart-zig/$(VERSION)
+S3_BASE_PATH = $(S3_BUCKET)/games/$(APP_NAME)/$(VERSION)
 
 # Default target
 help:
