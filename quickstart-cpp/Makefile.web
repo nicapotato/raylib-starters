@@ -1,0 +1,106 @@
+# Makefile.web
+# WebAssembly build for raylib-quickstart-cpp
+
+# Project Name
+PROJECT_NAME ?= raylib-quickstart-cpp
+
+# Directories
+# Adjust these paths if your directory structure is different
+RAYLIB_ROOT = build/external/raylib-master
+RAYLIB_SRC = $(RAYLIB_ROOT)/src
+SRC_DIR = src
+INCLUDE_DIR = include
+BUILD_DIR = bin/wasm
+RESOURCES_DIR = resources
+
+# Compiler
+CC = em++
+
+# Compiler Flags
+# -Os : Optimize for size
+# -Wall : Enable warnings
+# -std=c++17 : Standard C++17
+# -D_DEFAULT_SOURCE : Required for some POSIX functions
+# -Wno-missing-braces : Ignore missing braces warning
+# -Wunused-result : Ignore unused result warning
+# -DPLATFORM_WEB : Define web platform for raylib
+CXXFLAGS = -Os -Wall -std=c++17 -D_DEFAULT_SOURCE -Wno-missing-braces -Wunused-result -DPLATFORM_WEB
+
+# Include Paths
+CXXFLAGS += -I$(INCLUDE_DIR) -I$(RAYLIB_SRC) -I$(RAYLIB_SRC)/external
+
+# Linker Flags
+# -lraylib : Link against libraylib
+# -s USE_GLFW=3 : Use Emscripten's GLFW3 port
+# -s WASM=1 : Output WebAssembly
+# -s ALLOW_MEMORY_GROWTH=1 : Allow memory to grow
+# --preload-file $(RESOURCES_DIR) : Preload resources directory
+# --shell-file $(RAYLIB_SRC)/shell.html : Use raylib's shell template
+LDFLAGS = -L$(RAYLIB_SRC) -lraylib.web
+LDFLAGS += -s USE_GLFW=3 -s WASM=1 -s ALLOW_MEMORY_GROWTH=1 -s TOTAL_MEMORY=128MB -s STACK_SIZE=2MB -s ASYNCIFY -s ASSERTIONS=1
+LDFLAGS += --preload-file $(RESOURCES_DIR)
+LDFLAGS += --shell-file $(SRC_DIR)/shell.html
+
+# Source Files
+SRCS = $(SRC_DIR)/main.cpp
+
+# Version from project.conf
+VERSION := $(shell grep '^VERSION=' project.conf | cut -d= -f2)
+ifeq ($(VERSION),)
+  VERSION := latest
+endif
+S3_BASE_PATH = s3://dev-nicapotato-user-content/games/quickstart-cpp/$(VERSION)/wasm
+
+# Default Target
+.PHONY: all clean serve kill-port package upload
+
+all: $(BUILD_DIR)/index.html
+
+package: all
+	@echo "Packaging for Web..."
+	@rm -f $(BUILD_DIR)/$(PROJECT_NAME)_wasm.zip
+	@cd $(BUILD_DIR) && zip -r $(PROJECT_NAME)_wasm.zip *
+	@echo "Package created: $(BUILD_DIR)/$(PROJECT_NAME)_wasm.zip"
+
+upload: package
+	@echo "==== Uploading to S3 (Version: $(VERSION)) ===="
+	@if [ ! -f "$(BUILD_DIR)/$(PROJECT_NAME)_wasm.zip" ]; then \
+		echo "Error: Package not found. Please build first."; \
+		exit 1; \
+	fi
+	@echo "Uploading to $(S3_BASE_PATH)/"
+	@aws s3 cp "$(BUILD_DIR)/$(PROJECT_NAME)_wasm.zip" "$(S3_BASE_PATH)/"
+	@aws s3 cp "$(BUILD_DIR)/index.html" "$(S3_BASE_PATH)/index.html"
+	@aws s3 cp "$(BUILD_DIR)/index.js" "$(S3_BASE_PATH)/"
+	@aws s3 cp "$(BUILD_DIR)/index.wasm" "$(S3_BASE_PATH)/"
+	@aws s3 cp "$(BUILD_DIR)/index.data" "$(S3_BASE_PATH)/"
+	@echo "Upload complete."
+
+kill-port:
+	sleep 2
+	-lsof -t -i :8000 | xargs kill -9
+
+# Create Build Directory
+$(BUILD_DIR):
+	mkdir -p $(BUILD_DIR)
+
+# Build Raylib for Web
+$(RAYLIB_SRC)/libraylib.web.a:
+	@echo "Building Raylib for Web..."
+	cd $(RAYLIB_SRC) && $(MAKE) PLATFORM=PLATFORM_WEB
+
+# Build Project
+$(BUILD_DIR)/index.html: $(SRCS) $(RAYLIB_SRC)/libraylib.web.a | $(BUILD_DIR)
+	@echo "Building $(PROJECT_NAME) for Web..."
+	$(CC) -o $@ $(SRCS) $(CXXFLAGS) $(LDFLAGS)
+
+# Clean
+clean:
+	rm -rf $(BUILD_DIR)
+	cd $(RAYLIB_SRC) && $(MAKE) clean
+
+# Serve
+serve: all kill-port
+	@echo "Starting web server on http://localhost:8000"
+	python3 -m http.server 8000 --directory $(BUILD_DIR)
+
