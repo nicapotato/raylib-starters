@@ -18,6 +18,7 @@ zig-cache/
 # macOS app bundle and DMG
 *.app
 *.dmg
+*.dmg.*
 
 # IDE files
 .vscode/

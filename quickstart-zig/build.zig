@@ -64,7 +64,7 @@ pub fn build(b: *std.Build) !void {
         });
         exe.step.dependOn(&install_resources.step);
 
-        const install_mp3 = b.addInstallFile(b.path("../resources/crystal_cave_track.mp3"), "bin/resources/crystal_cave_track.mp3");
+        const install_mp3 = b.addInstallFile(b.path("../resources/crystal_cave_track.mp3"), "resources/crystal_cave_track.mp3");
         exe.step.dependOn(&install_mp3.step);
     }
 
@@ -93,7 +93,7 @@ pub fn build(b: *std.Build) !void {
         const emcc_cmd = b.addSystemCommand(&[_][]const u8{"emcc"});
         emcc_cmd.addFileArg(exe.getEmittedBin()); // The .a file from Zig
         emcc_cmd.addArg("-o");
-        const out_html = b.fmt("zig-out/bin/{s}.html", .{app_name});
+        const out_html = b.fmt("zig-out/wasm/index.html", .{});
         emcc_cmd.addArg(out_html);
 
         // Add Raylib library
@@ -114,7 +114,7 @@ pub fn build(b: *std.Build) !void {
         });
 
         // Create output directory step
-        const mkdir_cmd = b.addSystemCommand(&[_][]const u8{ "mkdir", "-p", "zig-out/bin" });
+        const mkdir_cmd = b.addSystemCommand(&[_][]const u8{ "mkdir", "-p", "zig-out/wasm" });
         emcc_cmd.step.dependOn(&mkdir_cmd.step);
 
         emcc_cmd.step.dependOn(b.getInstallStep());
@@ -122,11 +122,12 @@ pub fn build(b: *std.Build) !void {
 
         // 2. Zip the output
         const zip_cmd = b.addSystemCommand(&[_][]const u8{
-            "zip",                          "-r",                         b.fmt("{s}_wasm.zip", .{app_name}),
-            b.fmt("{s}.html", .{app_name}), b.fmt("{s}.js", .{app_name}), b.fmt("{s}.wasm", .{app_name}),
-            b.fmt("{s}.data", .{app_name}),
+            "zip",        "-r",       b.fmt("{s}_wasm.zip", .{app_name}),
+            "index.html", "index.js", "index.wasm",
+            "index.data",
         });
-        zip_cmd.cwd = b.path("zig-out/bin");
+        zip_cmd.cwd = b.path("zig-out/wasm");
+
         zip_cmd.step.dependOn(&emcc_cmd.step);
         package_step.dependOn(&zip_cmd.step);
     } else if (target.result.os.tag == .macos) {
@@ -140,12 +141,13 @@ pub fn build(b: *std.Build) !void {
             \\APP_NAME="$1"
             \\DMG_NAME="$2"
             \\VOL_NAME="$3"
+            \\BIN_PATH="$4"
             \\
             \\rm -rf "$APP_NAME.app" "$DMG_NAME"
             \\mkdir -p "$APP_NAME.app/Contents/MacOS"
             \\mkdir -p "$APP_NAME.app/Contents/Resources"
             \\
-            \\cp "zig-out/bin/$APP_NAME" "$APP_NAME.app/Contents/MacOS/"
+            \\cp "$BIN_PATH" "$APP_NAME.app/Contents/MacOS/$APP_NAME"
             \\chmod +x "$APP_NAME.app/Contents/MacOS/$APP_NAME"
             \\if [ -d "resources" ]; then cp -r resources "$APP_NAME.app/Contents/Resources/"; fi
             \\cp ../resources/crystal_cave_track.mp3 "$APP_NAME.app/Contents/Resources/resources/"
@@ -175,6 +177,7 @@ pub fn build(b: *std.Build) !void {
         ;
 
         const dmg_cmd = b.addSystemCommand(&[_][]const u8{ "sh", "-c", create_dmg_script, "--", app_name, dmg_name, app_name });
+        dmg_cmd.addFileArg(exe.getEmittedBin());
         dmg_cmd.step.dependOn(b.getInstallStep());
         package_step.dependOn(&dmg_cmd.step);
     }

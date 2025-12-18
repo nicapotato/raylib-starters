@@ -3,31 +3,83 @@
   <head>
     <meta charset="utf-8">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Raylib Zig Quickstart</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Raylib Quickstart Zig</title>
+    <meta name="title" content="Raylib Quickstart Zig">
+    <meta name="description" content="A Raylib Quickstart Zig Project">
     <style>
-        body { 
-            margin: 0; 
-            padding: 0; 
-            background-color: #000; 
-            width: 100vw; 
-            height: 100vh; 
-            display: flex; 
-            justify-content: center; 
-            align-items: center; 
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
             overflow: hidden;
+            background-color: #121212;
+            touch-action: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
-        canvas.emscripten { 
-            border: 0px none; 
-            background-color: black; 
-            display: block;
+        canvas.emscripten {
+            border: 0 none;
+            background-color: black;
             outline: none;
+            display: block;
+            image-rendering: pixelated;
+            /* Initial size, will be updated by JS */
+            width: 1280px; 
+            height: 800px;
+            /* Ensure it doesn't overflow */
+            max-width: 100%;
+            max-height: 100%;
+        }
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #888;
+            font-family: monospace;
+            font-size: 20px;
+            pointer-events: none;
+            z-index: 10;
         }
     </style>
   </head>
   <body>
-    <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex=-1></canvas>
+    <div id="loading">Loading...</div>
+    <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
     <script type='text/javascript'>
+      function resizeCanvas() {
+          var canvas = document.getElementById('canvas');
+          
+          if (!canvas) return;
+
+          // Use innerWidth/Height for better mobile viewport handling
+          var w = window.innerWidth;
+          var h = window.innerHeight;
+          
+          // Target aspect ratio (1280x800)
+          var targetRatio = 1280 / 800;
+          var containerRatio = w / h;
+          
+          var finalW, finalH;
+          
+          if (containerRatio > targetRatio) {
+              // Container is wider than target, constrain by height
+              finalH = h;
+              finalW = h * targetRatio;
+          } else {
+              // Container is narrower than target, constrain by width
+              finalW = w;
+              finalH = w / targetRatio;
+          }
+          
+          // Use floor to ensure we don't exceed container
+          canvas.style.width = Math.floor(finalW) + 'px';
+          canvas.style.height = Math.floor(finalH) + 'px';
+      }
+
       var Module = {
         print: (function() {
           return function(text) {
@@ -39,23 +91,40 @@
         },
         canvas: (function() {
           var canvas = document.getElementById('canvas');
-          // As a default initial behavior, pop up an alert when webgl context is lost. To make your
-          // application robust, you may want to override this behavior before shipping!
-          // See http://www.khronos.org/registry/webgl/specs/latest/1.0/#5.15.2
           canvas.addEventListener("webglcontextlost", function(e) { alert('WebGL context lost. You will need to reload the page.'); e.preventDefault(); }, false);
           return canvas;
         })(),
         setStatus: function(text) {
-            console.log("Status: " + text);
+          if (text) {
+             console.log(text);
+             var loading = document.getElementById('loading');
+             if(loading) loading.innerText = text;
+          }
         },
         totalDependencies: 0,
         monitorRunDependencies: function(left) {
           this.totalDependencies = Math.max(this.totalDependencies, left);
-          Module.setStatus(left ? 'Preparing... (' + (this.totalDependencies-left) + '/' + this.totalDependencies + ')' : 'All downloads complete.');
+        },
+        onRuntimeInitialized: function() {
+            var loadingDiv = document.getElementById('loading');
+            if (loadingDiv) loadingDiv.style.display = 'none';
+            
+            window.focus();
+            document.getElementById('canvas').focus();
+            
+            // Trigger initial resize
+            resizeCanvas();
         }
       };
+      
+      window.addEventListener('resize', resizeCanvas);
+      document.addEventListener('DOMContentLoaded', resizeCanvas);
+      
+      // Prevent default touch actions
+      document.addEventListener('touchmove', function(e) {
+          e.preventDefault();
+      }, { passive: false });
     </script>
     {{{ SCRIPT }}}
   </body>
 </html>
-
