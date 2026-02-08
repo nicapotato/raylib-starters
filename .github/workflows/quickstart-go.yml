@@ -1,0 +1,244 @@
+name: Quickstart Go CI/CD - itch.io
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_platform:
+        description: 'Platform to build'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - macos
+          - windows
+          - web
+          - all
+      env:
+        description: 'Environment (dev or prod)'
+        required: false
+        default: 'prod'
+        type: choice
+        options:
+          - dev
+          - prod
+      version:
+        description: 'Version override (leave empty to use project.conf)'
+        required: false
+        default: ''
+        type: string
+      channel:
+        description: 'itch.io channel name override (optional)'
+        required: false
+        default: ''
+        type: string
+  push:
+    branches: [ main, master, develop ]
+    paths:
+      - 'quickstart-go/**'
+      - '.github/workflows/quickstart-go.yml'
+  pull_request:
+    branches: [ main, master, develop ]
+    paths:
+      - 'quickstart-go/**'
+      - '.github/workflows/quickstart-go.yml'
+
+permissions:
+  contents: read
+
+env:
+  PROJECT_DIR: quickstart-go
+  ITCH_USER: nicapotato
+  ITCH_GAME: quickstart-go
+  ENV: ${{ github.event.inputs.env || 'prod' }}
+
+jobs:
+  build-and-push-macos:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    if: github.event.inputs.build_platform == 'macos' || github.event.inputs.build_platform == 'all' || (github.event.inputs.build_platform == '' && (github.event_name == 'push' || github.event_name == 'pull_request'))
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Setup deployment
+        uses: ./.github/actions/build-go-project
+        id: setup
+        with:
+          project_dir: ${{ env.PROJECT_DIR }}
+          itch_user: ${{ env.ITCH_USER }}
+          itch_game: ${{ env.ITCH_GAME }}
+          build_platform: macos
+          env: ${{ env.ENV }}
+          channel: ${{ github.event.inputs.channel }}
+          version_override: ${{ github.event.inputs.version }}
+          butler_api_key: ${{ secrets.BUTLER_API_KEY }}
+          deployment_only: 'true'
+
+      - name: Build macOS executable
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "🔨 Building macOS executable..."
+          mkdir -p bin
+          
+          # Cross-compile for macOS arm64
+          CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -o bin/quickstart-go main.go
+          
+          # Copy resources
+          if [ -d "resources" ]; then
+            mkdir -p bin/resources
+            cp -r resources/* bin/resources/
+            # Copy music from parent resources if it exists
+            if [ -f "../resources/crystal_cave_track.mp3" ]; then
+              cp ../resources/crystal_cave_track.mp3 bin/resources/ || true
+            fi
+          fi
+          
+          echo "✅ macOS executable build complete"
+
+      - name: Package macOS build
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "📦 Packaging macOS build..."
+          ZIP_NAME="quickstart-go-macos.zip"
+          rm -f "${ZIP_NAME}"
+          
+          # Create zip of bin directory contents
+          if [ -d "bin" ]; then
+            cd bin
+            zip -r "../${ZIP_NAME}" .
+            cd ..
+          else
+            echo "❌ Error: No build output directory found"
+            exit 1
+          fi
+          
+          echo "✅ Package created: ${ZIP_NAME}"
+
+      - name: Push to itch.io (macOS)
+        uses: ./.github/actions/build-go-project
+        with:
+          project_dir: ${{ env.PROJECT_DIR }}
+          itch_user: ${{ env.ITCH_USER }}
+          itch_game: ${{ env.ITCH_GAME }}
+          build_platform: macos
+          env: ${{ env.ENV }}
+          channel: ${{ github.event.inputs.channel }}
+          version_override: ${{ steps.setup.outputs.version || github.event.inputs.version }}
+          butler_api_key: ${{ secrets.BUTLER_API_KEY }}
+          package_file: quickstart-go-macos.zip
+          deployment_only: 'true'
+
+  build-and-push-windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    if: github.event.inputs.build_platform == 'windows' || github.event.inputs.build_platform == 'all' || (github.event.inputs.build_platform == '' && (github.event_name == 'push' || github.event_name == 'pull_request'))
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Setup deployment
+        uses: ./.github/actions/build-go-project
+        id: setup
+        with:
+          project_dir: ${{ env.PROJECT_DIR }}
+          itch_user: ${{ env.ITCH_USER }}
+          itch_game: ${{ env.ITCH_GAME }}
+          build_platform: windows
+          env: ${{ env.ENV }}
+          channel: ${{ github.event.inputs.channel }}
+          version_override: ${{ github.event.inputs.version }}
+          butler_api_key: ${{ secrets.BUTLER_API_KEY }}
+          deployment_only: 'true'
+
+      - name: Build Windows executable
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: bash
+        run: |
+          echo "🔨 Building Windows executable..."
+          mkdir -p bin
+          
+          # Cross-compile for Windows amd64
+          CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -o bin/quickstart-go.exe main.go
+          
+          # Copy resources
+          if [ -d "resources" ]; then
+            mkdir -p bin/resources
+            cp -r resources/* bin/resources/
+            # Copy music from parent resources if it exists
+            if [ -f "../resources/crystal_cave_track.mp3" ]; then
+              cp ../resources/crystal_cave_track.mp3 bin/resources/ || true
+            fi
+          fi
+          
+          echo "✅ Windows executable build complete"
+
+      - name: Package Windows build
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: pwsh
+        run: |
+          echo "📦 Packaging Windows build..."
+          $ZIP_NAME = "quickstart-go-windows.zip"
+          
+          # Use bin directory
+          if (Test-Path "bin") {
+            $SOURCE_DIR = "bin"
+          } else {
+            Write-Host "❌ Error: No build output directory found"
+            exit 1
+          }
+          
+          Compress-Archive -Path "${SOURCE_DIR}\*" -DestinationPath $ZIP_NAME -Force
+          echo "✅ Package created: $ZIP_NAME"
+
+      - name: Push to itch.io (Windows)
+        uses: ./.github/actions/build-go-project
+        with:
+          project_dir: ${{ env.PROJECT_DIR }}
+          itch_user: ${{ env.ITCH_USER }}
+          itch_game: ${{ env.ITCH_GAME }}
+          build_platform: windows
+          env: ${{ env.ENV }}
+          channel: ${{ github.event.inputs.channel }}
+          version_override: ${{ steps.setup.outputs.version || github.event.inputs.version }}
+          butler_api_key: ${{ secrets.BUTLER_API_KEY }}
+          package_file: quickstart-go-windows.zip
+          deployment_only: 'true'
+
+  build-and-push-web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: github.event.inputs.build_platform == 'web' || github.event.inputs.build_platform == 'all' || (github.event.inputs.build_platform == '' && (github.event_name == 'push' || github.event_name == 'pull_request'))
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check web build support
+        id: web_check
+        run: |
+          echo "ℹ️  Checking web build support for Go/Raylib..."
+          echo "⚠️  Web builds (WASM) for Go/Raylib projects require TinyGo or GopherJS"
+          echo "⚠️  Standard Go compiler does not support WebAssembly with CGO dependencies"
+          echo "⚠️  This build will be skipped. Consider using TinyGo for WASM support."
+          echo "skip=true" >> $GITHUB_OUTPUT
+
+      - name: Skip web build
+        if: steps.web_check.outputs.skip == 'true'
+        run: |
+          echo "⏭️  Skipping web build - not supported with standard Go toolchain"
+          echo "💡 To enable web builds, consider:"
+          echo "   1. Using TinyGo for WebAssembly compilation"
+          echo "   2. Creating a separate web build workflow"
+          echo "   3. Using a different approach for web deployment"
