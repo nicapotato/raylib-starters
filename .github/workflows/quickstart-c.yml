@@ -40,7 +40,7 @@ permissions:
 env:
   PROJECT_DIR: quickstart-c
   ITCH_USER: nicapotato
-  ITCH_GAME: raylib-quickstart-c
+  ITCH_GAME: quickstart-c
 
 jobs:
   build-and-push-web:
