@@ -94,8 +94,22 @@ jobs:
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           echo "🔨 Building macOS executable..."
-          # Use Premake-generated Makefile
-          make config=release_arm64
+          mkdir -p bin/Debug
+          
+          # Compile all source files directly
+          clang src/main.c \
+            -o bin/Debug/raylib-quickstart-c \
+            -O2 -std=c99 \
+            -I include -I raylib/src -I raylib/src/external \
+            -L raylib/src -lraylib \
+            -framework Cocoa -framework IOKit -framework OpenGL \
+            -arch arm64
+          
+          # Copy resources
+          if [ -d "resources" ]; then
+            cp -r resources bin/Debug/
+          fi
+          
           echo "✅ macOS executable build complete"
 
       - name: Package macOS build
@@ -105,13 +119,13 @@ jobs:
           ZIP_NAME="raylib-quickstart-c-macos.zip"
           rm -f "${ZIP_NAME}"
           
-          # Create zip of bin/Release contents
-          if [ -d "bin/Release" ]; then
-            cd bin/Release
+          # Create zip of bin/Debug contents (from direct compilation)
+          if [ -d "bin/Debug" ]; then
+            cd bin/Debug
             zip -r "../../${ZIP_NAME}" .
             cd ../..
-          elif [ -d "bin/Debug" ]; then
-            cd bin/Debug
+          elif [ -d "bin/Release" ]; then
+            cd bin/Release
             zip -r "../../${ZIP_NAME}" .
             cd ../..
           else
@@ -132,7 +146,7 @@ jobs:
           version_override: ${{ steps.setup.outputs.version || github.event.inputs.version }}
           butler_api_key: ${{ secrets.BUTLER_API_KEY }}
           package_file: raylib-quickstart-c-macos.zip
-          package_source_dir: bin/Release
+          package_source_dir: bin/Debug
           deployment_only: 'true'
 
   build-and-push-windows:
@@ -170,8 +184,31 @@ jobs:
         shell: bash
         run: |
           echo "🔨 Building Windows executable..."
-          # Use Premake-generated Makefile
-          make config=release_x64
+          
+          # Create directories
+          mkdir -p release obj
+          
+          # Compile resources
+          windres src/application.rc -o obj/resources.o -I src || echo "Warning: Resource compilation failed"
+          
+          # Build array of object files to include
+          OBJ_FILES=""
+          if [ -f "obj/resources.o" ]; then
+            OBJ_FILES="obj/resources.o"
+          fi
+          
+          # Build executable with conditional object files
+          if [ -n "$OBJ_FILES" ]; then
+            gcc src/main.c $OBJ_FILES -o release/raylib-quickstart-c.exe -O2 -I include -I raylib/src -L raylib/src -lraylib -lgdi32 -lwinmm -static
+          else
+            gcc src/main.c -o release/raylib-quickstart-c.exe -O2 -I include -I raylib/src -L raylib/src -lraylib -lgdi32 -lwinmm -static
+          fi
+          
+          # Copy resources
+          if [ -d "resources" ]; then
+            cp -r resources release/resources || true
+          fi
+          
           echo "✅ Windows build complete"
 
       - name: Package Windows build
@@ -181,8 +218,10 @@ jobs:
           echo "📦 Packaging Windows build..."
           $ZIP_NAME = "raylib-quickstart-c-windows.zip"
           
-          # Find the release directory
-          if (Test-Path "bin\Release") {
+          # Use release directory (from direct compilation)
+          if (Test-Path "release") {
+            $SOURCE_DIR = "release"
+          } elseif (Test-Path "bin\Release") {
             $SOURCE_DIR = "bin\Release"
           } elseif (Test-Path "bin\Debug") {
             $SOURCE_DIR = "bin\Debug"
@@ -205,5 +244,5 @@ jobs:
           version_override: ${{ steps.setup.outputs.version || github.event.inputs.version }}
           butler_api_key: ${{ secrets.BUTLER_API_KEY }}
           package_file: raylib-quickstart-c-windows.zip
-          package_source_dir: bin/Release
+          package_source_dir: release
           deployment_only: 'true'

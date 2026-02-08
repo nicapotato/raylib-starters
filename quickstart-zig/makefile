@@ -118,12 +118,12 @@ upload: dmg
 
 upload-web: web
 	@echo "==== Uploading to S3 (Version: $(VERSION)) ===="
-	@if [ ! -f "zig-out/wasm/$(APP_NAME)_wasm.zip" ]; then \
+	@if [ ! -f "zig-out/$(APP_NAME)_wasm.zip" ]; then \
 		echo "Error: Package not found. Please build first."; \
 		exit 1; \
 	fi
 	@echo "Uploading to $(S3_BASE_PATH_WASM)/"
-	@aws s3 cp "zig-out/wasm/$(APP_NAME)_wasm.zip" "$(S3_BASE_PATH_WASM)/"
+	@aws s3 cp "zig-out/$(APP_NAME)_wasm.zip" "$(S3_BASE_PATH_WASM)/"
 	@aws s3 cp "zig-out/wasm/index.html" "$(S3_BASE_PATH_WASM)/index.html"
 	@aws s3 cp "zig-out/wasm/index.js" "$(S3_BASE_PATH_WASM)/"
 	@aws s3 cp "zig-out/wasm/index.wasm" "$(S3_BASE_PATH_WASM)/"
