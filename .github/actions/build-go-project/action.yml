@@ -103,19 +103,19 @@ runs:
         PLATFORM="${{ inputs.build_platform }}"
         CHANNEL_OVERRIDE="${{ inputs.channel }}"
         
-        # Map platform to channel name
+        # Map platform to channel name (without project prefix, as game name already includes it)
         case "$PLATFORM" in
           macos)
-            BASE_CHANNEL="quickstart-go-osx"
+            BASE_CHANNEL="osx"
             ;;
           windows)
-            BASE_CHANNEL="quickstart-go-windows"
+            BASE_CHANNEL="windows"
             ;;
           web)
-            BASE_CHANNEL="quickstart-go-web"
+            BASE_CHANNEL="web"
             ;;
           *)
-            BASE_CHANNEL="quickstart-go-${PLATFORM}"
+            BASE_CHANNEL="${PLATFORM}"
             ;;
         esac
         
@@ -156,7 +156,7 @@ runs:
         CHANNEL: ${{ steps.channel.outputs.name }}
         VERSION: ${{ steps.version.outputs.version }}
       run: |
-        CHANNEL="${CHANNEL:-quickstart-go-osx}"
+        CHANNEL="${CHANNEL:-osx}"
         VERSION="${VERSION:-latest}"
         ZIP_NAME="${{ inputs.package_file }}"
         ENV="${{ inputs.env }}"
@@ -217,7 +217,7 @@ runs:
       run: |
         $CHANNEL = "$env:CHANNEL"
         if ([string]::IsNullOrEmpty($CHANNEL)) {
-          $CHANNEL = "quickstart-go-windows"
+          $CHANNEL = "windows"
         }
         $VERSION = "$env:VERSION"
         if ([string]::IsNullOrEmpty($VERSION)) {
@@ -276,7 +276,7 @@ runs:
         CHANNEL: ${{ steps.channel.outputs.name }}
         VERSION: ${{ steps.version.outputs.version }}
       run: |
-        CHANNEL="${CHANNEL:-quickstart-go-web}"
+        CHANNEL="${CHANNEL:-web}"
         VERSION="${VERSION:-latest}"
         ZIP_NAME="${{ inputs.package_file }}"
         ENV="${{ inputs.env }}"
