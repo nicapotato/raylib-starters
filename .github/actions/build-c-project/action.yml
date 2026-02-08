@@ -1,0 +1,358 @@
+name: 'Build C Project for itch.io'
+description: 'Reusable composite action for building C/Raylib projects and deploying to itch.io'
+
+# Usage:
+#   For web builds (fully automated):
+#     - Uses Makefile.web to build and package
+#     - Automatically handles Raylib setup, build, and deployment
+#
+#   For macOS/Windows builds (two-step process):
+#     Step 1: Setup (Raylib setup, version extraction)
+#       - Set skip_project_build: 'true' or deployment_only: 'false'
+#     Step 2: Deployment (after your project build)
+#       - Set deployment_only: 'true'
+#       - Provide package_file and package_source_dir
+#
+# Example workflow:
+#   - name: Setup
+#     uses: ./.github/actions/build-c-project
+#     with:
+#       project_dir: 'my-project'
+#       build_platform: 'macos'
+#       skip_project_build: 'true'
+#   - name: Build project
+#     run: make config=release_arm64
+#   - name: Package
+#     run: zip -r my-project-macos.zip bin/Release
+#   - name: Deploy
+#     uses: ./.github/actions/build-c-project
+#     with:
+#       project_dir: 'my-project'
+#       build_platform: 'macos'
+#       package_file: 'my-project-macos.zip'
+#       deployment_only: 'true'
+
+inputs:
+  project_dir:
+    description: 'Project directory path'
+    required: true
+  itch_user:
+    description: 'itch.io username'
+    required: true
+  itch_game:
+    description: 'itch.io game slug'
+    required: true
+  build_platform:
+    description: 'Platform to build (web, macos, windows)'
+    required: true
+  channel:
+    description: 'itch.io channel name'
+    required: false
+    default: ''
+  version_override:
+    description: 'Version override (leave empty to use project.conf)'
+    required: false
+    default: ''
+  butler_api_key:
+    description: 'Butler API key for itch.io'
+    required: true
+  package_file:
+    description: 'Package file name (for macOS/Windows, e.g., project-macos.zip)'
+    required: false
+    default: ''
+  package_source_dir:
+    description: 'Source directory to package (for macOS/Windows, e.g., bin/Debug or release)'
+    required: false
+    default: ''
+  skip_project_build:
+    description: 'Skip project-specific build (use when build is handled by workflow)'
+    required: false
+    default: 'false'
+  deployment_only:
+    description: 'Only run deployment steps (skip setup and builds)'
+    required: false
+    default: 'false'
+
+outputs:
+  version:
+    description: 'Extracted version number'
+    value: ${{ steps.version.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Extract version
+      id: version
+      shell: bash
+      working-directory: ${{ inputs.project_dir }}
+      run: |
+        if [ -n "${{ inputs.version_override }}" ]; then
+          VERSION="${{ inputs.version_override }}"
+          echo "Using version from workflow input: $VERSION"
+        elif [ -f "project.conf" ]; then
+          VERSION=$(grep '^VERSION=' project.conf | cut -d= -f2)
+          if [ -z "$VERSION" ]; then
+            VERSION="latest"
+          fi
+          echo "Using version from project.conf: $VERSION"
+        else
+          VERSION="latest"
+          echo "Using default version: $VERSION"
+        fi
+        echo "version=${VERSION}" >> $GITHUB_OUTPUT
+        echo "VERSION=${VERSION}" >> $GITHUB_ENV
+        echo "✅ Version set to: $VERSION"
+
+    - name: Setup Raylib (Web)
+      if: inputs.build_platform == 'web' && inputs.deployment_only != 'true'
+      shell: bash
+      working-directory: ${{ inputs.project_dir }}
+      run: |
+        echo "📥 Setting up Raylib..."
+        mkdir -p build/external
+        cd build/external
+        if [ ! -d "raylib-master" ]; then
+          echo "Cloning raylib from GitHub..."
+          git clone --depth 1 https://github.com/raysan5/raylib.git raylib-master
+        else
+          echo "Raylib already exists, skipping clone"
+        fi
+        echo "✅ Raylib setup complete"
+
+    - name: Setup Raylib (macOS)
+      if: inputs.build_platform == 'macos' && inputs.deployment_only != 'true'
+      shell: bash
+      working-directory: ${{ inputs.project_dir }}
+      run: |
+        echo "📥 Setting up Raylib..."
+        if [ ! -d "raylib" ]; then
+          echo "Cloning raylib from GitHub..."
+          git clone --depth 1 https://github.com/raysan5/raylib.git
+        else
+          echo "Raylib already exists, skipping clone"
+        fi
+        echo "✅ Raylib setup complete"
+
+    - name: Setup Raylib (Windows)
+      if: inputs.build_platform == 'windows' && inputs.deployment_only != 'true'
+      shell: bash
+      working-directory: ${{ inputs.project_dir }}
+      run: |
+        echo "📥 Setting up Raylib..."
+        if [ ! -d "raylib" ]; then
+          echo "Cloning raylib from GitHub..."
+          git clone --depth 1 https://github.com/raysan5/raylib.git raylib
+        else
+          echo "Raylib already exists, skipping clone"
+        fi
+        echo "✅ Raylib setup complete"
+
+    - name: Build Raylib (macOS)
+      if: inputs.build_platform == 'macos' && inputs.deployment_only != 'true'
+      shell: bash
+      working-directory: ${{ inputs.project_dir }}
+      run: |
+        echo "🔨 Building Raylib..."
+        cd raylib/src
+        make PLATFORM=PLATFORM_DESKTOP
+        echo "✅ Raylib build complete"
+
+    - name: Build Raylib (Windows)
+      if: inputs.build_platform == 'windows' && inputs.deployment_only != 'true'
+      shell: bash
+      working-directory: ${{ inputs.project_dir }}
+      run: |
+        echo "🔨 Building Raylib..."
+        cd raylib/src
+        mingw32-make -j4
+        echo "✅ Raylib build complete"
+
+    # Note: Project-specific builds for macOS/Windows should be handled by the calling workflow
+    # This action focuses on setup, Raylib building, and deployment
+
+    - name: Build WebAssembly version
+      if: inputs.build_platform == 'web' && inputs.deployment_only != 'true'
+      shell: bash
+      working-directory: ${{ inputs.project_dir }}
+      run: |
+        echo "🔨 Building WebAssembly version..."
+        make -f Makefile.web all
+        echo "✅ WebAssembly build complete"
+
+    - name: Package Web build
+      if: inputs.build_platform == 'web' && inputs.deployment_only != 'true'
+      shell: bash
+      working-directory: ${{ inputs.project_dir }}
+      run: |
+        echo "📦 Packaging web build..."
+        make -f Makefile.web package
+        echo "✅ Package created"
+
+    - name: Setup butler
+      if: inputs.deployment_only != 'true' || inputs.build_platform == 'web'
+      uses: remarkablegames/setup-butler@v2
+      with:
+        butler-version: LATEST
+
+    - name: Setup butler (deployment)
+      if: inputs.deployment_only == 'true' && inputs.build_platform != 'web'
+      uses: remarkablegames/setup-butler@v2
+      with:
+        butler-version: LATEST
+
+    - name: Package macOS build
+      if: inputs.build_platform == 'macos' && inputs.package_file != '' && inputs.package_source_dir != '' && inputs.deployment_only != 'true'
+      shell: bash
+      working-directory: ${{ inputs.project_dir }}
+      run: |
+        echo "📦 Packaging macOS build..."
+        ZIP_NAME="${{ inputs.package_file }}"
+        SOURCE_DIR="${{ inputs.package_source_dir }}"
+        rm -f "${ZIP_NAME}"
+        
+        # Create zip of source directory contents
+        cd "${SOURCE_DIR}"
+        zip -r "../${ZIP_NAME}" .
+        cd ..
+        
+        echo "✅ Package created: ${ZIP_NAME}"
+
+    - name: Package Windows build
+      if: inputs.build_platform == 'windows' && inputs.package_file != '' && inputs.package_source_dir != '' && inputs.deployment_only != 'true'
+      shell: bash
+      working-directory: ${{ inputs.project_dir }}
+      run: |
+        echo "📦 Packaging Windows build..."
+        ZIP_NAME="${{ inputs.package_file }}"
+        SOURCE_DIR="${{ inputs.package_source_dir }}"
+        
+        # Use PowerShell for Windows compression
+        pwsh -Command "Compress-Archive -Path '${SOURCE_DIR}\*' -DestinationPath '${ZIP_NAME}' -Force"
+        
+        echo "✅ Package created: ${ZIP_NAME}"
+
+    - name: Push to itch.io (web)
+      if: inputs.build_platform == 'web'
+      shell: bash
+      working-directory: ${{ inputs.project_dir }}
+      env:
+        BUTLER_API_KEY: ${{ inputs.butler_api_key }}
+      run: |
+        CHANNEL="${{ inputs.channel }}"
+        if [ -z "$CHANNEL" ]; then
+          CHANNEL="web"
+        fi
+        VERSION="${VERSION:-latest}"
+        
+        # Verify BUTLER_API_KEY is set
+        echo "🔍 Debug: Checking BUTLER_API_KEY..."
+        if [ -z "$BUTLER_API_KEY" ]; then
+          echo "❌ Error: BUTLER_API_KEY secret is not set (empty)"
+          exit 1
+        else
+          echo "✅ BUTLER_API_KEY is set"
+        fi
+        
+        if [ -z "${{ inputs.itch_user }}" ] || [ -z "${{ inputs.itch_game }}" ]; then
+          echo "❌ Error: ITCH_USER and ITCH_GAME must be set"
+          exit 1
+        fi
+        
+        echo "🚀 Pushing to itch.io..."
+        echo "Game: ${{ inputs.itch_user }}/${{ inputs.itch_game }}"
+        echo "Channel: ${CHANNEL}"
+        echo "Version: ${VERSION}"
+        echo "Directory: bin/wasm"
+        
+        butler push bin/wasm ${{ inputs.itch_user }}/${{ inputs.itch_game }}:${CHANNEL} --userversion ${VERSION}
+        
+        echo "✅ Successfully pushed to itch.io!"
+
+    - name: Push to itch.io (macOS)
+      if: inputs.build_platform == 'macos' && inputs.package_file != ''
+      shell: bash
+      working-directory: ${{ inputs.project_dir }}
+      env:
+        BUTLER_API_KEY: ${{ inputs.butler_api_key }}
+      run: |
+        CHANNEL="${{ inputs.channel }}"
+        if [ -z "$CHANNEL" ]; then
+          CHANNEL="osx"
+        fi
+        VERSION="${VERSION:-latest}"
+        ZIP_NAME="${{ inputs.package_file }}"
+        
+        # Verify BUTLER_API_KEY is set
+        echo "🔍 Debug: Checking BUTLER_API_KEY..."
+        if [ -z "$BUTLER_API_KEY" ]; then
+          echo "❌ Error: BUTLER_API_KEY secret is not set (empty)"
+          exit 1
+        else
+          echo "✅ BUTLER_API_KEY is set"
+        fi
+        
+        if [ -z "${{ inputs.itch_user }}" ] || [ -z "${{ inputs.itch_game }}" ]; then
+          echo "❌ Error: ITCH_USER and ITCH_GAME must be set"
+          exit 1
+        fi
+        
+        if [ ! -f "${ZIP_NAME}" ]; then
+          echo "❌ Error: ZIP file not found: ${ZIP_NAME}"
+          exit 1
+        fi
+        
+        echo "🚀 Pushing to itch.io..."
+        echo "Game: ${{ inputs.itch_user }}/${{ inputs.itch_game }}"
+        echo "Channel: ${CHANNEL}"
+        echo "Version: ${VERSION}"
+        echo "File: ${ZIP_NAME}"
+        
+        butler push "${ZIP_NAME}" ${{ inputs.itch_user }}/${{ inputs.itch_game }}:${CHANNEL} --userversion ${VERSION}
+        
+        echo "✅ Successfully pushed to itch.io!"
+
+    - name: Push to itch.io (Windows)
+      if: inputs.build_platform == 'windows' && inputs.package_file != ''
+      shell: pwsh
+      working-directory: ${{ inputs.project_dir }}
+      env:
+        BUTLER_API_KEY: ${{ inputs.butler_api_key }}
+      run: |
+        $CHANNEL = "${{ inputs.channel }}"
+        if ([string]::IsNullOrEmpty($CHANNEL)) {
+          $CHANNEL = "windows"
+        }
+        $VERSION = "$env:VERSION"
+        if ([string]::IsNullOrEmpty($VERSION)) {
+          $VERSION = "latest"
+        }
+        $ZIP_NAME = "${{ inputs.package_file }}"
+        
+        # Verify BUTLER_API_KEY is set
+        Write-Host "🔍 Debug: Checking BUTLER_API_KEY..."
+        if ([string]::IsNullOrEmpty($env:BUTLER_API_KEY)) {
+          Write-Host "❌ Error: BUTLER_API_KEY secret is not set (empty)"
+          exit 1
+        } else {
+          Write-Host "✅ BUTLER_API_KEY is set"
+        }
+        
+        if ([string]::IsNullOrEmpty("${{ inputs.itch_user }}") -or [string]::IsNullOrEmpty("${{ inputs.itch_game }}")) {
+          Write-Host "❌ Error: ITCH_USER and ITCH_GAME must be set"
+          exit 1
+        }
+        
+        if (-not (Test-Path $ZIP_NAME)) {
+          Write-Host "❌ Error: ZIP file not found: $ZIP_NAME"
+          exit 1
+        }
+        
+        Write-Host "🚀 Pushing to itch.io..."
+        Write-Host "Game: ${{ inputs.itch_user }}/${{ inputs.itch_game }}"
+        Write-Host "Channel: $CHANNEL"
+        Write-Host "Version: $VERSION"
+        Write-Host "File: $ZIP_NAME"
+        
+        butler push $ZIP_NAME ${{ inputs.itch_user }}/${{ inputs.itch_game }}:$CHANNEL --userversion $VERSION
+        
+        Write-Host "✅ Successfully pushed to itch.io!"

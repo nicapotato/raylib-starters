@@ -1,0 +1,461 @@
+name: Mindsweeper CI/CD - itch.io
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_platform:
+        description: 'Platform to build'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - web
+          - macos
+          - windows
+          - all
+      channel:
+        description: 'itch.io channel name (e.g., web, macos, osx)'
+        required: false
+        default: 'web'
+        type: string
+      version:
+        description: 'Version override (leave empty to use project.conf)'
+        required: false
+        default: ''
+        type: string
+  push:
+    branches: [ main, master, develop ]
+    paths:
+      - 'mindsweeper-raylib-c/**'
+      - '.github/workflows/mindsweeper-cicd.yml'
+  pull_request:
+    branches: [ main, master, develop ]
+    paths:
+      - 'mindsweeper-raylib-c/**'
+      - '.github/workflows/mindsweeper-cicd.yml'
+
+permissions:
+  contents: read
+
+env:
+  PROJECT_DIR: mindsweeper-raylib-c
+  ITCH_USER: nicapotato
+  ITCH_GAME: Mindsweeper
+
+jobs:
+  build-and-push-web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: github.event.inputs.build_platform == 'web' || github.event.inputs.build_platform == 'all' || (github.event.inputs.build_platform == '' && (github.event_name == 'push' || github.event_name == 'pull_request'))
+
+    env:
+      BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 'latest'
+
+      - name: Setup Raylib
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "📥 Setting up Raylib..."
+          mkdir -p build/external
+          cd build/external
+          if [ ! -d "raylib-master" ]; then
+            echo "Cloning raylib from GitHub..."
+            git clone --depth 1 https://github.com/raysan5/raylib.git raylib-master
+          else
+            echo "Raylib already exists, skipping clone"
+          fi
+          echo "✅ Raylib setup complete"
+
+      - name: Extract version
+        id: version
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+            echo "Using version from workflow input: $VERSION"
+          elif [ -f "project.conf" ]; then
+            VERSION=$(grep '^VERSION=' project.conf | cut -d= -f2)
+            if [ -z "$VERSION" ]; then
+              VERSION="latest"
+            fi
+            echo "Using version from project.conf: $VERSION"
+          else
+            VERSION="latest"
+            echo "Using default version: $VERSION"
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "✅ Version set to: $VERSION"
+
+      - name: Build WebAssembly version
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "🔨 Building WebAssembly version..."
+          make -f Makefile.web all
+          echo "✅ WebAssembly build complete"
+
+      - name: Package Web build
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "📦 Packaging web build..."
+          make -f Makefile.web package
+          echo "✅ Package created"
+
+      - name: Setup butler
+        uses: remarkablegames/setup-butler@v2
+        with:
+          butler-version: LATEST
+
+      - name: Push to itch.io (web)
+        working-directory: ${{ env.PROJECT_DIR }}
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        run: |
+          CHANNEL="${{ github.event.inputs.channel || 'web' }}"
+          VERSION="${{ steps.version.outputs.version }}"
+          
+          # Verify BUTLER_API_KEY is set
+          echo "🔍 Debug: Checking BUTLER_API_KEY..."
+          if [ -z "$BUTLER_API_KEY" ]; then
+            echo "❌ Error: BUTLER_API_KEY secret is not set (empty)"
+            echo "Secret value length: ${#BUTLER_API_KEY}"
+            echo "Please set BUTLER_API_KEY in your repository secrets or environment secrets"
+            exit 1
+          else
+            echo "✅ BUTLER_API_KEY is set (length: ${#BUTLER_API_KEY} characters)"
+            echo "🔍 BUTLER_API_KEY value (will be masked by GitHub): $BUTLER_API_KEY"
+          fi
+          
+          if [ -z "${{ env.ITCH_USER }}" ] || [ -z "${{ env.ITCH_GAME }}" ]; then
+            echo "❌ Error: ITCH_USER and ITCH_GAME must be set"
+            echo "Please set them in your repository secrets:"
+            echo "  - ITCH_USER: Your itch.io username"
+            echo "  - ITCH_GAME: Your game's itch.io slug"
+            exit 1
+          fi
+          
+          echo "🚀 Pushing to itch.io..."
+          echo "Game: ${{ env.ITCH_USER }}/${{ env.ITCH_GAME }}"
+          echo "Channel: ${CHANNEL}"
+          echo "Version: ${VERSION}"
+          echo "Directory: bin/wasm"
+          
+          # Push the web build directory
+          # Note: To mark as HTML/playable in browser, go to itch.io Edit game page
+          # and set the page type to 'HTML' instead of 'Downloadable'
+          butler push bin/wasm ${{ env.ITCH_USER }}/${{ env.ITCH_GAME }}:${CHANNEL} --userversion ${VERSION}
+          
+          echo "✅ Successfully pushed to itch.io!"
+
+  build-and-push-macos:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    if: github.event.inputs.build_platform == 'macos' || github.event.inputs.build_platform == 'all' || (github.event.inputs.build_platform == '' && (github.event_name == 'push' || github.event_name == 'pull_request'))
+
+    env:
+      BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract version
+        id: version
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+            echo "Using version from workflow input: $VERSION"
+          elif [ -f "project.conf" ]; then
+            VERSION=$(grep '^VERSION=' project.conf | cut -d= -f2)
+            if [ -z "$VERSION" ]; then
+              VERSION="latest"
+            fi
+            echo "Using version from project.conf: $VERSION"
+          else
+            VERSION="latest"
+            echo "Using default version: $VERSION"
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "✅ Version set to: $VERSION"
+
+      - name: Setup Raylib
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "📥 Setting up Raylib..."
+          if [ ! -d "raylib" ]; then
+            echo "Cloning raylib from GitHub..."
+            git clone --depth 1 https://github.com/raysan5/raylib.git
+          else
+            echo "Raylib already exists, skipping clone"
+          fi
+          echo "✅ Raylib setup complete"
+
+      - name: Build Raylib
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "🔨 Building Raylib..."
+          cd raylib/src
+          make PLATFORM=PLATFORM_DESKTOP
+          echo "✅ Raylib build complete"
+
+      - name: Build macOS executable
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "🔨 Building macOS executable..."
+          mkdir -p bin/Debug
+          
+          # Compile all source files
+          clang src/main.c src/game.c src/config.c src/entity_logic.c src/board_click.c src/board.c src/audio.c src/load_media.c src/persistence.c \
+            -o bin/Debug/mindsweeper-raylib-c \
+            -O2 -std=c99 \
+            -I include -I raylib/src -I raylib/src/external \
+            -L raylib/src -lraylib \
+            -framework Cocoa -framework IOKit -framework OpenGL \
+            -arch arm64
+          
+          # Copy resources
+          if [ -d "resources" ]; then
+            cp -r resources bin/Debug/
+          fi
+          
+          echo "✅ macOS executable build complete"
+
+      - name: Package macOS build
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "📦 Packaging macOS build..."
+          ZIP_NAME="mindsweeper-raylib-c-macos.zip"
+          rm -f "${ZIP_NAME}"
+          
+          # Create zip of bin/Debug contents
+          cd bin/Debug
+          zip -r "../../${ZIP_NAME}" .
+          cd ../..
+          
+          echo "✅ Package created: ${ZIP_NAME}"
+
+      - name: Setup butler
+        uses: remarkablegames/setup-butler@v2
+        with:
+          butler-version: LATEST
+
+      - name: Push to itch.io (macOS)
+        working-directory: ${{ env.PROJECT_DIR }}
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        run: |
+          CHANNEL="${{ github.event.inputs.channel || 'osx' }}"
+          VERSION="${{ steps.version.outputs.version }}"
+          
+          # Verify BUTLER_API_KEY is set
+          echo "🔍 Debug: Checking BUTLER_API_KEY..."
+          if [ -z "$BUTLER_API_KEY" ]; then
+            echo "❌ Error: BUTLER_API_KEY secret is not set (empty)"
+            echo "Secret value length: ${#BUTLER_API_KEY}"
+            echo "Please set BUTLER_API_KEY in your repository secrets or environment secrets"
+            exit 1
+          else
+            echo "✅ BUTLER_API_KEY is set (length: ${#BUTLER_API_KEY} characters)"
+            echo "🔍 BUTLER_API_KEY value (will be masked by GitHub): $BUTLER_API_KEY"
+          fi
+          
+          if [ -z "${{ env.ITCH_USER }}" ] || [ -z "${{ env.ITCH_GAME }}" ]; then
+            echo "❌ Error: ITCH_USER and ITCH_GAME must be set"
+            echo "Please set them in your repository secrets:"
+            echo "  - ITCH_USER: Your itch.io username"
+            echo "  - ITCH_GAME: Your game's itch.io slug"
+            exit 1
+          fi
+          
+          if [ ! -f "mindsweeper-raylib-c-macos.zip" ]; then
+            echo "❌ Error: ZIP file not found"
+            exit 1
+          fi
+          
+          echo "🚀 Pushing to itch.io..."
+          echo "Game: ${{ env.ITCH_USER }}/${{ env.ITCH_GAME }}"
+          echo "Channel: ${CHANNEL}"
+          echo "Version: ${VERSION}"
+          echo "File: mindsweeper-raylib-c-macos.zip"
+          
+          # Push the ZIP file containing bin/Debug contents
+          # Channel name containing 'osx' or 'mac' will auto-tag as macOS
+          butler push mindsweeper-raylib-c-macos.zip ${{ env.ITCH_USER }}/${{ env.ITCH_GAME }}:${CHANNEL} --userversion ${VERSION}
+          
+          echo "✅ Successfully pushed to itch.io!"
+
+  build-and-push-windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    if: github.event.inputs.build_platform == 'windows' || github.event.inputs.build_platform == 'all' || (github.event.inputs.build_platform == '' && (github.event_name == 'push' || github.event_name == 'pull_request'))
+
+    env:
+      BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Raylib
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "📥 Setting up Raylib..."
+          if (-not (Test-Path "raylib")) {
+            echo "Cloning raylib from GitHub..."
+            git clone --depth 1 https://github.com/raysan5/raylib.git raylib
+          } else {
+            echo "Raylib already exists, skipping clone"
+          }
+          echo "✅ Raylib setup complete"
+
+      - name: Extract version
+        id: version
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+            echo "Using version from workflow input: $VERSION"
+          elif [ -f "project.conf" ]; then
+            VERSION=$(grep '^VERSION=' project.conf | cut -d= -f2)
+            if [ -z "$VERSION" ]; then
+              VERSION="latest"
+            fi
+            echo "Using version from project.conf: $VERSION"
+          else
+            VERSION="latest"
+            echo "Using default version: $VERSION"
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "✅ Version set to: $VERSION"
+
+      - name: Install MinGW
+        run: |
+          echo "📦 Installing MinGW..."
+          choco install mingw -y
+          $env:PATH += ";C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin"
+          echo "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          echo "✅ MinGW installed"
+
+      - name: Build Raylib
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "🔨 Building Raylib..."
+          cd raylib\src
+          mingw32-make -j4
+          echo "✅ Raylib build complete"
+
+      - name: Build Windows executable
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "🔨 Building Windows executable..."
+          if (-not (Test-Path "release")) {
+            New-Item -ItemType Directory -Path "release"
+          }
+          if (-not (Test-Path "obj")) {
+            New-Item -ItemType Directory -Path "obj"
+          }
+          
+          # Build array of object files to include
+          $objFiles = @()
+          
+          # Compile cJSON if it exists
+          $cjsonSrc = "cJSON-1.7.18"
+          if (Test-Path "$cjsonSrc\cJSON.c") {
+            gcc -c "$cjsonSrc\cJSON.c" -o "obj\cJSON.o" -O2
+            if (Test-Path "obj\cJSON.o") {
+              $objFiles += "obj\cJSON.o"
+            }
+          }
+          
+          # Compile resources
+          windres src\application.rc -o obj\resources.o -I src
+          if (Test-Path "obj\resources.o") {
+            $objFiles += "obj\resources.o"
+          }
+          
+          # Build executable with conditional object files
+          $sourceFiles = @(
+            "src\main.c",
+            "src\game.c",
+            "src\config.c",
+            "src\entity_logic.c",
+            "src\board_click.c",
+            "src\board.c",
+            "src\audio.c",
+            "src\load_media.c",
+            "src\persistence.c"
+          )
+          
+          $allFiles = $sourceFiles + $objFiles
+          gcc $allFiles -o release\mindsweeper-raylib-c.exe -O2 -I include -I raylib\src -L raylib\src -lraylib -lgdi32 -lwinmm -static
+          
+          # Copy resources
+          if (Test-Path "resources") {
+            Copy-Item -Path "resources" -Destination "release\resources" -Recurse -Force
+          }
+          
+          echo "✅ Windows build complete"
+
+      - name: Package Windows build
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "📦 Packaging Windows build..."
+          Compress-Archive -Path "release\*" -DestinationPath "mindsweeper-raylib-c-windows.zip" -Force
+          echo "✅ Package created: mindsweeper-raylib-c-windows.zip"
+
+      - name: Setup butler
+        uses: remarkablegames/setup-butler@v2
+        with:
+          butler-version: LATEST
+
+      - name: Push to itch.io (Windows)
+        working-directory: ${{ env.PROJECT_DIR }}
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        shell: pwsh
+        run: |
+          $CHANNEL = "${{ github.event.inputs.channel }}"
+          if ([string]::IsNullOrEmpty($CHANNEL)) {
+            $CHANNEL = "windows"
+          }
+          $VERSION = "${{ steps.version.outputs.version }}"
+          
+          # Verify BUTLER_API_KEY is set
+          Write-Host "🔍 Debug: Checking BUTLER_API_KEY..."
+          if ([string]::IsNullOrEmpty($env:BUTLER_API_KEY)) {
+            Write-Host "❌ Error: BUTLER_API_KEY secret is not set (empty)"
+            Write-Host "Secret value length: $($env:BUTLER_API_KEY.Length)"
+            Write-Host "Please set BUTLER_API_KEY in your repository secrets or environment secrets"
+            exit 1
+          } else {
+            Write-Host "✅ BUTLER_API_KEY is set (length: $($env:BUTLER_API_KEY.Length) characters)"
+            Write-Host "🔍 BUTLER_API_KEY value (will be masked by GitHub): $env:BUTLER_API_KEY"
+          }
+          
+          if ([string]::IsNullOrEmpty("${{ env.ITCH_USER }}") -or [string]::IsNullOrEmpty("${{ env.ITCH_GAME }}")) {
+            Write-Host "❌ Error: ITCH_USER and ITCH_GAME must be set"
+            exit 1
+          }
+          
+          if (-not (Test-Path "mindsweeper-raylib-c-windows.zip")) {
+            Write-Host "❌ Error: ZIP file not found"
+            exit 1
+          }
+          
+          Write-Host "🚀 Pushing to itch.io..."
+          Write-Host "Game: ${{ env.ITCH_USER }}/${{ env.ITCH_GAME }}"
+          Write-Host "Channel: $CHANNEL"
+          Write-Host "Version: $VERSION"
+          Write-Host "File: mindsweeper-raylib-c-windows.zip"
+          
+          # Push the ZIP file
+          # Channel name containing 'win' or 'windows' will auto-tag as Windows
+          butler push mindsweeper-raylib-c-windows.zip ${{ env.ITCH_USER }}/${{ env.ITCH_GAME }}:$CHANNEL --userversion $VERSION
+          
+          Write-Host "✅ Successfully pushed to itch.io!"
