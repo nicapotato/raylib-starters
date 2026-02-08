@@ -264,7 +264,10 @@ runs:
         echo "Version: ${VERSION}"
         echo "Directory: bin/wasm"
         
-        butler push bin/wasm ${{ inputs.itch_user }}/${{ inputs.itch_game }}:${CHANNEL} --userversion ${VERSION}
+        if ! butler push bin/wasm ${{ inputs.itch_user }}/${{ inputs.itch_game }}:${CHANNEL} --userversion ${VERSION}; then
+          echo "❌ Error: Failed to push to itch.io (exit code: $?)"
+          exit 1
+        fi
         
         echo "✅ Successfully pushed to itch.io!"
 
@@ -307,7 +310,10 @@ runs:
         echo "Version: ${VERSION}"
         echo "File: ${ZIP_NAME}"
         
-        butler push "${ZIP_NAME}" ${{ inputs.itch_user }}/${{ inputs.itch_game }}:${CHANNEL} --userversion ${VERSION}
+        if ! butler push "${ZIP_NAME}" ${{ inputs.itch_user }}/${{ inputs.itch_game }}:${CHANNEL} --userversion ${VERSION}; then
+          echo "❌ Error: Failed to push to itch.io (exit code: $?)"
+          exit 1
+        fi
         
         echo "✅ Successfully pushed to itch.io!"
 
@@ -354,5 +360,9 @@ runs:
         Write-Host "File: $ZIP_NAME"
         
         butler push $ZIP_NAME ${{ inputs.itch_user }}/${{ inputs.itch_game }}:$CHANNEL --userversion $VERSION
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "❌ Error: Failed to push to itch.io (exit code: $LASTEXITCODE)"
+          exit 1
+        }
         
         Write-Host "✅ Successfully pushed to itch.io!"
