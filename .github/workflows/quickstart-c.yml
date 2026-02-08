@@ -3,6 +3,11 @@ name: Quickstart C CI/CD - itch.io
 on:
   workflow_dispatch:
     inputs:
+      project:
+        description: 'Project to build (for filtering)'
+        required: false
+        default: 'quickstart-c'
+        type: string
       build_platform:
         description: 'Platform to build'
         required: false
@@ -46,7 +51,7 @@ jobs:
   build-and-push-web:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    if: github.event.inputs.build_platform == 'web' || github.event.inputs.build_platform == 'all' || (github.event.inputs.build_platform == '' && (github.event_name == 'push' || github.event_name == 'pull_request'))
+    if: (github.event.inputs.project == 'quickstart-c' || github.event.inputs.project == '' || github.event_name != 'workflow_dispatch') && (github.event.inputs.build_platform == 'web' || github.event.inputs.build_platform == 'all' || (github.event.inputs.build_platform == '' && (github.event_name == 'push' || github.event_name == 'pull_request')))
 
     steps:
       - name: Checkout code
@@ -71,7 +76,7 @@ jobs:
   build-and-push-macos:
     runs-on: macos-latest
     timeout-minutes: 45
-    if: github.event.inputs.build_platform == 'macos' || github.event.inputs.build_platform == 'all' || (github.event.inputs.build_platform == '' && (github.event_name == 'push' || github.event_name == 'pull_request'))
+    if: (github.event.inputs.project == 'quickstart-c' || github.event.inputs.project == '' || github.event_name != 'workflow_dispatch') && (github.event.inputs.build_platform == 'macos' || github.event.inputs.build_platform == 'all' || (github.event.inputs.build_platform == '' && (github.event_name == 'push' || github.event_name == 'pull_request')))
 
     steps:
       - name: Checkout code
@@ -152,7 +157,7 @@ jobs:
   build-and-push-windows:
     runs-on: windows-latest
     timeout-minutes: 45
-    if: github.event.inputs.build_platform == 'windows' || github.event.inputs.build_platform == 'all' || (github.event.inputs.build_platform == '' && (github.event_name == 'push' || github.event_name == 'pull_request'))
+    if: (github.event.inputs.project == 'quickstart-c' || github.event.inputs.project == '' || github.event_name != 'workflow_dispatch') && (github.event.inputs.build_platform == 'windows' || github.event.inputs.build_platform == 'all' || (github.event.inputs.build_platform == '' && (github.event_name == 'push' || github.event_name == 'pull_request')))
 
     steps:
       - name: Checkout code
