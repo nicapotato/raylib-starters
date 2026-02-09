@@ -27,6 +27,9 @@ zig-cache/
 *.swo
 *.code-workspace
 
+# Resources (large binary files)
+resources/*.mp3
+
 # OS files
 .DS_Store
 Thumbs.db
