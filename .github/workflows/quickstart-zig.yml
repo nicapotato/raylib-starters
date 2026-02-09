@@ -1,0 +1,311 @@
+name: Quickstart Zig CI/CD - itch.io
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_platform:
+        description: 'Platform to build'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - web
+          - macos
+          - windows
+          - all
+      env:
+        description: 'Environment (dev or prod)'
+        required: false
+        default: 'prod'
+        type: choice
+        options:
+          - dev
+          - prod
+      version:
+        description: 'Version override (leave empty to use project.conf)'
+        required: false
+        default: ''
+        type: string
+      channel:
+        description: 'itch.io channel name override (optional)'
+        required: false
+        default: ''
+        type: string
+  push:
+    paths:
+      - 'quickstart-zig/**'
+
+permissions:
+  contents: read
+
+env:
+  PROJECT_DIR: quickstart-zig
+  ITCH_USER: nicapotato
+  ITCH_GAME: quickstart-zig
+  ENV: ${{ github.event.inputs.env || 'prod' }}
+
+jobs:
+  build-and-push-web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: >-
+      github.event_name == 'push' ||
+      github.event.inputs.build_platform == 'web' ||
+      github.event.inputs.build_platform == 'all'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 'latest'
+
+      - name: Set up Zig
+        uses: mlugg/setup-zig@v2
+
+      - name: Copy shared resources
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "📦 Copying shared resources..."
+          mkdir -p resources
+          if [ -f "../resources/crystal_cave_track.mp3" ]; then
+            cp ../resources/crystal_cave_track.mp3 resources/
+            echo "✅ Copied crystal_cave_track.mp3"
+          else
+            echo "⚠️  Shared resource crystal_cave_track.mp3 not found, skipping"
+          fi
+
+      - name: Setup deployment
+        uses: ./.github/actions/build-zig-project
+        id: setup
+        with:
+          project_dir: ${{ env.PROJECT_DIR }}
+          itch_user: ${{ env.ITCH_USER }}
+          itch_game: ${{ env.ITCH_GAME }}
+          build_platform: web
+          env: ${{ env.ENV }}
+          channel: ${{ github.event.inputs.channel }}
+          version_override: ${{ github.event.inputs.version }}
+          butler_api_key: ${{ secrets.BUTLER_API_KEY }}
+          deployment_only: 'true'
+
+      - name: Build WebAssembly version
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "🔨 Building WebAssembly version..."
+
+          SYSROOT=$(emcc --cflags | grep -o '\--sysroot=[^ ]*' | cut -d= -f2)
+          if [ -z "$SYSROOT" ]; then
+            echo "❌ Error: Could not determine emcc sysroot"
+            exit 1
+          fi
+          echo "Emscripten sysroot: $SYSROOT"
+
+          zig build package -Dtarget=wasm32-emscripten -Doptimize=ReleaseSmall -Dsysroot_path="$SYSROOT"
+
+          echo "✅ WebAssembly build complete"
+
+      - name: Package web build
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "📦 Packaging web build..."
+          ZIP_NAME="quickstart-zig-web.zip"
+
+          if [ -d "zig-out/wasm" ]; then
+            # Remove the auto-generated zip if present to avoid nesting
+            rm -f zig-out/wasm/*_wasm.zip
+            cd zig-out/wasm
+            zip -r "../../${ZIP_NAME}" .
+            cd ../..
+          else
+            echo "❌ Error: zig-out/wasm directory not found"
+            exit 1
+          fi
+
+          echo "✅ Package created: ${ZIP_NAME}"
+
+      - name: Push to itch.io (web)
+        uses: ./.github/actions/build-zig-project
+        with:
+          project_dir: ${{ env.PROJECT_DIR }}
+          itch_user: ${{ env.ITCH_USER }}
+          itch_game: ${{ env.ITCH_GAME }}
+          build_platform: web
+          env: ${{ env.ENV }}
+          channel: ${{ github.event.inputs.channel }}
+          version_override: ${{ steps.setup.outputs.version || github.event.inputs.version }}
+          butler_api_key: ${{ secrets.BUTLER_API_KEY }}
+          package_file: quickstart-zig-web.zip
+          deployment_only: 'true'
+
+  build-and-push-macos:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    if: >-
+      github.event_name == 'push' ||
+      github.event.inputs.build_platform == 'macos' ||
+      github.event.inputs.build_platform == 'all'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Zig
+        uses: mlugg/setup-zig@v2
+
+      - name: Copy shared resources
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "📦 Copying shared resources..."
+          mkdir -p resources
+          if [ -f "../resources/crystal_cave_track.mp3" ]; then
+            cp ../resources/crystal_cave_track.mp3 resources/
+            echo "✅ Copied crystal_cave_track.mp3"
+          else
+            echo "⚠️  Shared resource crystal_cave_track.mp3 not found, skipping"
+          fi
+
+      - name: Setup deployment
+        uses: ./.github/actions/build-zig-project
+        id: setup
+        with:
+          project_dir: ${{ env.PROJECT_DIR }}
+          itch_user: ${{ env.ITCH_USER }}
+          itch_game: ${{ env.ITCH_GAME }}
+          build_platform: macos
+          env: ${{ env.ENV }}
+          channel: ${{ github.event.inputs.channel }}
+          version_override: ${{ github.event.inputs.version }}
+          butler_api_key: ${{ secrets.BUTLER_API_KEY }}
+          deployment_only: 'true'
+
+      - name: Build macOS executable
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "🔨 Building macOS executable..."
+          zig build -Doptimize=ReleaseSafe
+
+          # Ad-hoc codesign for Apple Silicon distribution
+          # The linker-signed signature gets invalidated during zip/upload/download,
+          # causing macOS kernel to SIGKILL the binary. A proper ad-hoc signature survives.
+          codesign -s - -f zig-out/bin/raylib-quickstart-zig
+          codesign --verify zig-out/bin/raylib-quickstart-zig
+          echo "✅ Binary signed and verified"
+
+          echo "✅ macOS executable build complete"
+
+      - name: Package macOS build
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "📦 Packaging macOS build..."
+          ZIP_NAME="quickstart-zig-macos.zip"
+          rm -f "${ZIP_NAME}"
+
+          if [ -d "zig-out/bin" ]; then
+            cd zig-out/bin
+            zip -r "../../${ZIP_NAME}" .
+            cd ../..
+          else
+            echo "❌ Error: No build output directory found"
+            exit 1
+          fi
+
+          echo "✅ Package created: ${ZIP_NAME}"
+
+      - name: Push to itch.io (macOS)
+        uses: ./.github/actions/build-zig-project
+        with:
+          project_dir: ${{ env.PROJECT_DIR }}
+          itch_user: ${{ env.ITCH_USER }}
+          itch_game: ${{ env.ITCH_GAME }}
+          build_platform: macos
+          env: ${{ env.ENV }}
+          channel: ${{ github.event.inputs.channel }}
+          version_override: ${{ steps.setup.outputs.version || github.event.inputs.version }}
+          butler_api_key: ${{ secrets.BUTLER_API_KEY }}
+          package_file: quickstart-zig-macos.zip
+          deployment_only: 'true'
+
+  build-and-push-windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    if: >-
+      github.event_name == 'push' ||
+      github.event.inputs.build_platform == 'windows' ||
+      github.event.inputs.build_platform == 'all'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Zig
+        uses: mlugg/setup-zig@v2
+
+      - name: Copy shared resources
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: bash
+        run: |
+          echo "📦 Copying shared resources..."
+          mkdir -p resources
+          if [ -f "../resources/crystal_cave_track.mp3" ]; then
+            cp ../resources/crystal_cave_track.mp3 resources/
+            echo "✅ Copied crystal_cave_track.mp3"
+          else
+            echo "⚠️  Shared resource crystal_cave_track.mp3 not found, skipping"
+          fi
+
+      - name: Setup deployment
+        uses: ./.github/actions/build-zig-project
+        id: setup
+        with:
+          project_dir: ${{ env.PROJECT_DIR }}
+          itch_user: ${{ env.ITCH_USER }}
+          itch_game: ${{ env.ITCH_GAME }}
+          build_platform: windows
+          env: ${{ env.ENV }}
+          channel: ${{ github.event.inputs.channel }}
+          version_override: ${{ github.event.inputs.version }}
+          butler_api_key: ${{ secrets.BUTLER_API_KEY }}
+          deployment_only: 'true'
+
+      - name: Build Windows executable
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: bash
+        run: |
+          echo "🔨 Building Windows executable..."
+          zig build -Doptimize=ReleaseSafe
+
+          echo "✅ Windows executable build complete"
+
+      - name: Package Windows build
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: pwsh
+        run: |
+          echo "📦 Packaging Windows build..."
+          $ZIP_NAME = "quickstart-zig-windows.zip"
+
+          if (Test-Path "zig-out\bin") {
+            $SOURCE_DIR = "zig-out\bin"
+          } else {
+            Write-Host "❌ Error: No build output directory found"
+            exit 1
+          }
+
+          Compress-Archive -Path "${SOURCE_DIR}\*" -DestinationPath $ZIP_NAME -Force
+          echo "✅ Package created: $ZIP_NAME"
+
+      - name: Push to itch.io (Windows)
+        uses: ./.github/actions/build-zig-project
+        with:
+          project_dir: ${{ env.PROJECT_DIR }}
+          itch_user: ${{ env.ITCH_USER }}
+          itch_game: ${{ env.ITCH_GAME }}
+          build_platform: windows
+          env: ${{ env.ENV }}
+          channel: ${{ github.event.inputs.channel }}
+          version_override: ${{ steps.setup.outputs.version || github.event.inputs.version }}
+          butler_api_key: ${{ secrets.BUTLER_API_KEY }}
+          package_file: quickstart-zig-windows.zip
+          deployment_only: 'true'
