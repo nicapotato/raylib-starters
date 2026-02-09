@@ -86,10 +86,10 @@ jobs:
           echo "🔨 Building macOS executable..."
           mkdir -p bin
           
-          # Cross-compile for macOS arm64
-          CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -o bin/quickstart-go main.go
+          # Build natively on macOS (no GOOS/GOARCH needed, matches makefile)
+          CGO_ENABLED=1 go build -o bin/raylib-quickstart-go main.go
           
-          # Copy resources
+          # Copy resources (matches makefile structure)
           if [ -d "resources" ]; then
             mkdir -p bin/resources
             cp -r resources/* bin/resources/
