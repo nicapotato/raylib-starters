@@ -6,6 +6,8 @@
     #include <emscripten/emscripten.h>
 #endif
 
+// Nick CICD Trigger
+
 // --- Global State ---
 typedef enum {
     STATE_MENU,
