@@ -1,126 +1,130 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Raylib Quickstart Rust - WASM</title>
+<!doctype html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Raylib Quickstart Rust</title>
+    <meta name="title" content="Raylib Quickstart Rust">
+    <meta name="description" content="A Raylib Quickstart Rust Project">
     <style>
-        * { margin: 0; padding: 0; }
-        body {
-            background: #222;
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #121212;
+            touch-action: none;
             display: flex;
-            flex-direction: column;
             align-items: center;
             justify-content: center;
-            min-height: 100vh;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            color: #eee;
         }
-        #header {
-            padding: 12px 20px;
-            display: flex;
-            align-items: center;
-            gap: 16px;
-        }
-        h1 { font-size: 18px; font-weight: 500; }
-        #btn-audio {
-            padding: 6px 14px;
-            border: 1px solid #555;
-            border-radius: 4px;
-            background: #333;
-            color: #eee;
-            cursor: pointer;
-            font-size: 13px;
-        }
-        #btn-audio:hover { background: #444; }
         canvas.emscripten {
-            border: 0;
-            background: black;
+            border: 0 none;
+            background-color: black;
+            outline: none;
+            display: block;
+            image-rendering: pixelated;
+            /* Initial size, will be updated by JS */
+            width: 1280px;
+            height: 800px;
+            /* Ensure it doesn't overflow */
+            max-width: 100%;
+            max-height: 100%;
         }
-        #status {
-            margin-top: 10px;
-            font-size: 13px;
-            color: #999;
-        }
-        #spinner {
-            display: inline-block;
-            width: 18px;
-            height: 18px;
-            border: 3px solid #555;
-            border-top: 3px solid #e44;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-            margin-right: 8px;
-            vertical-align: middle;
-        }
-        @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #888;
+            font-family: monospace;
+            font-size: 20px;
+            pointer-events: none;
+            z-index: 10;
         }
     </style>
-</head>
-<body>
-    <div id="header">
-        <h1>Raylib Quickstart Rust</h1>
-        <button id="btn-audio" onclick="toggleAudio()">Resume Audio</button>
-    </div>
-
+  </head>
+  <body>
+    <div id="loading">Loading...</div>
     <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+    <script type='text/javascript'>
+      function resizeCanvas() {
+          var canvas = document.getElementById('canvas');
 
-    <div id="status"><span id="spinner"></span>Downloading...</div>
+          if (!canvas) return;
 
-    <script>
-        var statusElement = document.getElementById('status');
-        var spinnerElement = document.getElementById('spinner');
+          // Use innerWidth/Height for better mobile viewport handling
+          var w = window.innerWidth;
+          var h = window.innerHeight;
 
-        var Module = {
-            print: function(text) { console.log(text); },
-            printErr: function(text) { console.error(text); },
-            canvas: document.getElementById('canvas'),
-            setStatus: function(text) {
-                if (!text) {
-                    spinnerElement.style.display = 'none';
-                    statusElement.textContent = '';
-                } else {
-                    statusElement.innerHTML = '<span id="spinner" style="display:inline-block;width:18px;height:18px;border:3px solid #555;border-top:3px solid #e44;border-radius:50%;animation:spin 0.8s linear infinite;margin-right:8px;vertical-align:middle;"></span>' + text;
-                }
-            },
-            totalDependencies: 0,
-            monitorRunDependencies: function(left) {
-                this.totalDependencies = Math.max(this.totalDependencies, left);
-                Module.setStatus(left
-                    ? 'Preparing... (' + (this.totalDependencies - left) + '/' + this.totalDependencies + ')'
-                    : '');
-            }
-        };
+          // Target aspect ratio (1280x800)
+          var targetRatio = 1280 / 800;
+          var containerRatio = w / h;
 
-        Module.setStatus('Downloading...');
-        window.onerror = function() {
-            Module.setStatus('Exception thrown, see JavaScript console');
-        };
+          var finalW, finalH;
 
-        // Audio context tracking for browser autoplay policy
-        var audioContextList = [];
-        (function() {
-            self.AudioContext = new Proxy(self.AudioContext, {
-                construct(target, args) {
-                    var ctx = new target(...args);
-                    audioContextList.push(ctx);
-                    return ctx;
-                }
-            });
-        })();
+          if (containerRatio > targetRatio) {
+              // Container is wider than target, constrain by height
+              finalH = h;
+              finalW = h * targetRatio;
+          } else {
+              // Container is narrower than target, constrain by width
+              finalW = w;
+              finalH = w / targetRatio;
+          }
 
-        function toggleAudio() {
-            var btn = document.getElementById('btn-audio');
-            var resumed = false;
-            audioContextList.forEach(function(ctx) {
-                if (ctx.state === 'suspended') { ctx.resume(); resumed = true; }
-                else if (ctx.state === 'running') { ctx.suspend(); }
-            });
-            btn.textContent = resumed ? 'Suspend Audio' : 'Resume Audio';
+          // Use floor to ensure we don't exceed container
+          canvas.style.width = Math.floor(finalW) + 'px';
+          canvas.style.height = Math.floor(finalH) + 'px';
+      }
+
+      var Module = {
+        print: (function() {
+          return function(text) {
+            console.log(text);
+          };
+        })(),
+        printErr: function(text) {
+          console.warn(text);
+        },
+        canvas: (function() {
+          var canvas = document.getElementById('canvas');
+          canvas.addEventListener("webglcontextlost", function(e) { alert('WebGL context lost. You will need to reload the page.'); e.preventDefault(); }, false);
+          return canvas;
+        })(),
+        setStatus: function(text) {
+          if (text) {
+             console.log(text);
+             var loading = document.getElementById('loading');
+             if(loading) loading.innerText = text;
+          }
+        },
+        totalDependencies: 0,
+        monitorRunDependencies: function(left) {
+          this.totalDependencies = Math.max(this.totalDependencies, left);
+        },
+        onRuntimeInitialized: function() {
+            var loadingDiv = document.getElementById('loading');
+            if (loadingDiv) loadingDiv.style.display = 'none';
+
+            window.focus();
+            document.getElementById('canvas').focus();
+
+            // Trigger initial resize
+            resizeCanvas();
         }
+      };
+
+      window.addEventListener('resize', resizeCanvas);
+      document.addEventListener('DOMContentLoaded', resizeCanvas);
+
+      // Prevent default touch actions
+      document.addEventListener('touchmove', function(e) {
+          e.preventDefault();
+      }, { passive: false });
     </script>
     <script async src="raylib-quickstart-rust.js"></script>
-</body>
+  </body>
 </html>
