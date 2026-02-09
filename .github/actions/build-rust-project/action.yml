@@ -1,0 +1,326 @@
+name: 'Build Rust Project for itch.io'
+description: 'Reusable composite action for building Rust/Raylib projects and deploying to itch.io'
+
+# Usage:
+#   For Rust builds:
+#     - Handles version extraction and deployment
+#     - Supports dev/prod environments with channel naming
+#     - Environment-aware channel suffixes (-dev for dev, none for prod)
+#     - raylib-sys builds raylib from source via cmake/bindgen
+#
+# Example workflow:
+#   - name: Setup
+#     uses: ./.github/actions/build-rust-project
+#     with:
+#       project_dir: 'quickstart-rust'
+#       build_platform: 'macos'
+#       deployment_only: 'true'
+#   - name: Build
+#     run: cargo build --release
+#   - name: Package
+#     run: cd target/release && zip -r ../../quickstart-rust-macos.zip raylib-quickstart-rust resources/ && cd ../..
+#   - name: Deploy
+#     uses: ./.github/actions/build-rust-project
+#     with:
+#       project_dir: 'quickstart-rust'
+#       build_platform: 'macos'
+#       package_file: 'quickstart-rust-macos.zip'
+#       deployment_only: 'true'
+
+inputs:
+  project_dir:
+    description: 'Project directory path'
+    required: true
+  itch_user:
+    description: 'itch.io username'
+    required: true
+  itch_game:
+    description: 'itch.io game slug'
+    required: true
+  build_platform:
+    description: 'Platform to build (macos, windows, web)'
+    required: true
+  env:
+    description: 'Environment (dev or prod)'
+    required: false
+    default: 'prod'
+  channel:
+    description: 'itch.io channel name override (optional)'
+    required: false
+    default: ''
+  version_override:
+    description: 'Version override (leave empty to use project.conf)'
+    required: false
+    default: ''
+  butler_api_key:
+    description: 'Butler API key for itch.io'
+    required: true
+  package_file:
+    description: 'Package file name (e.g., quickstart-rust-macos.zip)'
+    required: false
+    default: ''
+  deployment_only:
+    description: 'Only run deployment steps (skip setup and builds)'
+    required: false
+    default: 'false'
+
+outputs:
+  version:
+    description: 'Extracted version number'
+    value: ${{ steps.version.outputs.version }}
+  channel_name:
+    description: 'Final channel name with environment suffix'
+    value: ${{ steps.channel.outputs.name }}
+
+runs:
+  using: composite
+  steps:
+    - name: Extract version
+      id: version
+      shell: bash
+      working-directory: ${{ inputs.project_dir }}
+      run: |
+        if [ -n "${{ inputs.version_override }}" ]; then
+          VERSION="${{ inputs.version_override }}"
+          echo "Using version from workflow input: $VERSION"
+        elif [ -f "project.conf" ]; then
+          VERSION=$(grep '^VERSION=' project.conf | cut -d= -f2)
+          if [ -z "$VERSION" ]; then
+            VERSION="latest"
+          fi
+          echo "Using version from project.conf: $VERSION"
+        elif [ -f "Cargo.toml" ]; then
+          VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          if [ -z "$VERSION" ]; then
+            VERSION="latest"
+          fi
+          echo "Using version from Cargo.toml: $VERSION"
+        else
+          VERSION="latest"
+          echo "Using default version: $VERSION"
+        fi
+        echo "version=${VERSION}" >> $GITHUB_OUTPUT
+        echo "VERSION=${VERSION}" >> $GITHUB_ENV
+        echo "✅ Version set to: $VERSION"
+
+    - name: Determine channel name
+      id: channel
+      shell: bash
+      run: |
+        ENV="${{ inputs.env }}"
+        PLATFORM="${{ inputs.build_platform }}"
+        CHANNEL_OVERRIDE="${{ inputs.channel }}"
+
+        case "$PLATFORM" in
+          macos)
+            BASE_CHANNEL="osx"
+            ;;
+          windows)
+            BASE_CHANNEL="windows"
+            ;;
+          web)
+            BASE_CHANNEL="web"
+            ;;
+          *)
+            BASE_CHANNEL="${PLATFORM}"
+            ;;
+        esac
+
+        if [ "$ENV" = "dev" ]; then
+          FINAL_CHANNEL="${BASE_CHANNEL}-dev"
+        else
+          FINAL_CHANNEL="${BASE_CHANNEL}"
+        fi
+
+        if [ -n "$CHANNEL_OVERRIDE" ]; then
+          FINAL_CHANNEL="$CHANNEL_OVERRIDE"
+        fi
+
+        echo "name=${FINAL_CHANNEL}" >> $GITHUB_OUTPUT
+        echo "CHANNEL=${FINAL_CHANNEL}" >> $GITHUB_ENV
+        echo "✅ Channel name: ${FINAL_CHANNEL}"
+
+    - name: Setup butler
+      if: inputs.deployment_only != 'true'
+      uses: remarkablegames/setup-butler@v2
+      with:
+        butler-version: LATEST
+
+    - name: Setup butler (deployment)
+      if: inputs.deployment_only == 'true'
+      uses: remarkablegames/setup-butler@v2
+      with:
+        butler-version: LATEST
+
+    - name: Push to itch.io (macOS)
+      if: inputs.build_platform == 'macos' && inputs.package_file != ''
+      shell: bash
+      working-directory: ${{ inputs.project_dir }}
+      env:
+        BUTLER_API_KEY: ${{ inputs.butler_api_key }}
+        CHANNEL: ${{ steps.channel.outputs.name }}
+        VERSION: ${{ steps.version.outputs.version }}
+      run: |
+        CHANNEL="${CHANNEL:-osx}"
+        VERSION="${VERSION:-latest}"
+        ZIP_NAME="${{ inputs.package_file }}"
+        ENV="${{ inputs.env }}"
+
+        echo "🔍 Debug: Checking BUTLER_API_KEY..."
+        if [ -z "$BUTLER_API_KEY" ]; then
+          echo "❌ Error: BUTLER_API_KEY secret is not set (empty)"
+          exit 1
+        else
+          echo "✅ BUTLER_API_KEY is set"
+        fi
+
+        if [ -z "${{ inputs.itch_user }}" ] || [ -z "${{ inputs.itch_game }}" ]; then
+          echo "❌ Error: ITCH_USER and ITCH_GAME must be set"
+          exit 1
+        fi
+
+        if [ ! -f "${ZIP_NAME}" ]; then
+          echo "❌ Error: ZIP file not found: ${ZIP_NAME}"
+          exit 1
+        fi
+
+        echo "🚀 Pushing to itch.io..."
+        echo "Game: ${{ inputs.itch_user }}/${{ inputs.itch_game }}"
+        echo "Channel: ${CHANNEL}"
+        echo "Version: ${VERSION}"
+        echo "Environment: ${ENV}"
+        echo "File: ${ZIP_NAME}"
+
+        BUTLER_CMD="butler push \"${ZIP_NAME}\" ${{ inputs.itch_user }}/${{ inputs.itch_game }}:${CHANNEL} --userversion ${VERSION}"
+        if [ "$ENV" = "dev" ]; then
+          BUTLER_CMD="${BUTLER_CMD} --hidden"
+          echo "ℹ️  Dev channel - marking as hidden"
+        fi
+
+        set +e
+        eval $BUTLER_CMD
+        BUTLER_EXIT=$?
+        set -e
+
+        if [ $BUTLER_EXIT -ne 0 ]; then
+          echo "❌ Error: Failed to push to itch.io (exit code: $BUTLER_EXIT)"
+          exit 1
+        fi
+
+        echo "✅ Successfully pushed to itch.io!"
+
+    - name: Push to itch.io (Windows)
+      if: inputs.build_platform == 'windows' && inputs.package_file != ''
+      shell: pwsh
+      working-directory: ${{ inputs.project_dir }}
+      env:
+        BUTLER_API_KEY: ${{ inputs.butler_api_key }}
+        CHANNEL: ${{ steps.channel.outputs.name }}
+        VERSION: ${{ steps.version.outputs.version }}
+      run: |
+        $CHANNEL = "$env:CHANNEL"
+        if ([string]::IsNullOrEmpty($CHANNEL)) {
+          $CHANNEL = "windows"
+        }
+        $VERSION = "$env:VERSION"
+        if ([string]::IsNullOrEmpty($VERSION)) {
+          $VERSION = "latest"
+        }
+        $ZIP_NAME = "${{ inputs.package_file }}"
+        $ENV = "${{ inputs.env }}"
+
+        Write-Host "🔍 Debug: Checking BUTLER_API_KEY..."
+        if ([string]::IsNullOrEmpty($env:BUTLER_API_KEY)) {
+          Write-Host "❌ Error: BUTLER_API_KEY secret is not set (empty)"
+          exit 1
+        } else {
+          Write-Host "✅ BUTLER_API_KEY is set"
+        }
+
+        if ([string]::IsNullOrEmpty("${{ inputs.itch_user }}") -or [string]::IsNullOrEmpty("${{ inputs.itch_game }}")) {
+          Write-Host "❌ Error: ITCH_USER and ITCH_GAME must be set"
+          exit 1
+        }
+
+        if (-not (Test-Path $ZIP_NAME)) {
+          Write-Host "❌ Error: ZIP file not found: $ZIP_NAME"
+          exit 1
+        }
+
+        Write-Host "🚀 Pushing to itch.io..."
+        Write-Host "Game: ${{ inputs.itch_user }}/${{ inputs.itch_game }}"
+        Write-Host "Channel: $CHANNEL"
+        Write-Host "Version: $VERSION"
+        Write-Host "Environment: $ENV"
+        Write-Host "File: $ZIP_NAME"
+
+        $BUTLER_CMD = "butler push $ZIP_NAME ${{ inputs.itch_user }}/${{ inputs.itch_game }}:$CHANNEL --userversion $VERSION"
+        if ($ENV -eq "dev") {
+          $BUTLER_CMD = "$BUTLER_CMD --hidden"
+          Write-Host "ℹ️  Dev channel - marking as hidden"
+        }
+
+        Invoke-Expression $BUTLER_CMD
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "❌ Error: Failed to push to itch.io (exit code: $LASTEXITCODE)"
+          exit 1
+        }
+
+        Write-Host "✅ Successfully pushed to itch.io!"
+
+    - name: Push to itch.io (web)
+      if: inputs.build_platform == 'web' && inputs.package_file != ''
+      shell: bash
+      working-directory: ${{ inputs.project_dir }}
+      env:
+        BUTLER_API_KEY: ${{ inputs.butler_api_key }}
+        CHANNEL: ${{ steps.channel.outputs.name }}
+        VERSION: ${{ steps.version.outputs.version }}
+      run: |
+        CHANNEL="${CHANNEL:-web}"
+        VERSION="${VERSION:-latest}"
+        ZIP_NAME="${{ inputs.package_file }}"
+        ENV="${{ inputs.env }}"
+
+        echo "🔍 Debug: Checking BUTLER_API_KEY..."
+        if [ -z "$BUTLER_API_KEY" ]; then
+          echo "❌ Error: BUTLER_API_KEY secret is not set (empty)"
+          exit 1
+        else
+          echo "✅ BUTLER_API_KEY is set"
+        fi
+
+        if [ -z "${{ inputs.itch_user }}" ] || [ -z "${{ inputs.itch_game }}" ]; then
+          echo "❌ Error: ITCH_USER and ITCH_GAME must be set"
+          exit 1
+        fi
+
+        if [ ! -f "${ZIP_NAME}" ]; then
+          echo "❌ Error: ZIP file not found: ${ZIP_NAME}"
+          exit 1
+        fi
+
+        echo "🚀 Pushing to itch.io..."
+        echo "Game: ${{ inputs.itch_user }}/${{ inputs.itch_game }}"
+        echo "Channel: ${CHANNEL}"
+        echo "Version: ${VERSION}"
+        echo "Environment: ${ENV}"
+        echo "File: ${ZIP_NAME}"
+
+        BUTLER_CMD="butler push \"${ZIP_NAME}\" ${{ inputs.itch_user }}/${{ inputs.itch_game }}:${CHANNEL} --userversion ${VERSION}"
+        if [ "$ENV" = "dev" ]; then
+          BUTLER_CMD="${BUTLER_CMD} --hidden"
+          echo "ℹ️  Dev channel - marking as hidden"
+        fi
+
+        set +e
+        eval $BUTLER_CMD
+        BUTLER_EXIT=$?
+        set -e
+
+        if [ $BUTLER_EXIT -ne 0 ]; then
+          echo "❌ Error: Failed to push to itch.io (exit code: $BUTLER_EXIT)"
+          exit 1
+        fi
+
+        echo "✅ Successfully pushed to itch.io!"
