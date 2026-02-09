@@ -1,7 +1,7 @@
 # raylib-quickstart-rust Makefile
 # Build targets for raylib-quickstart-rust
 
-.PHONY: help build install run clean test dmg
+.PHONY: help build install run clean test dmg wasm serve-wasm clean-wasm
 
 # Application metadata
 APP_NAME = raylib-quickstart-rust
@@ -26,6 +26,14 @@ ICON_ICO = resources/app-icon.ico
 ICON_ICNS = resources/app-icon.icns
 ICON_NAME = app-icon
 
+# WASM build configuration
+WASM_TARGET = wasm32-unknown-emscripten
+WASM_BUILD_DIR = target/$(WASM_TARGET)/debug
+WASM_OUT_DIR = web
+# Crate name with hyphens (for .js file) and underscores (for .wasm/.data files)
+CRATE_NAME_HYPHEN = $(APP_NAME)
+CRATE_NAME_UNDER = $(subst -,_,$(APP_NAME))
+
 # Default target
 help:
 	@echo "raylib-quickstart-rust Makefile"
@@ -37,12 +45,17 @@ help:
 	@echo "  clean          - Remove built binaries and Rust build artifacts"
 	@echo "  test           - Run the application (same as run)"
 	@echo "  dmg            - Create macOS DMG package (macOS only)"
+	@echo "  wasm           - Build for WebAssembly (requires emscripten)"
+	@echo "  serve-wasm     - Build WASM and serve with local HTTP server"
+	@echo "  clean-wasm     - Remove WASM build artifacts"
 	@echo ""
 	@echo "Examples:"
 	@echo "  make build"
 	@echo "  make install"
 	@echo "  make run"
 	@echo "  make dmg"
+	@echo "  make wasm"
+	@echo "  make serve-wasm"
 
 # Build the executable (debug)
 build:
@@ -192,3 +205,39 @@ dmg: install
 	rm -f "$(DMG_WRITABLE)"; \
 	echo "DMG created successfully: $(DMG_NAME)"
 
+# Build for WebAssembly using emscripten
+wasm:
+	@echo "==== Building $(APP_NAME) for WASM ===="
+	@if ! command -v emcc > /dev/null 2>&1; then \
+		echo "Error: emscripten (emcc) not found. Install emsdk first."; \
+		exit 1; \
+	fi
+	@# Copy shared resources needed for WASM preloading
+	@if [ -f "../resources/crystal_cave_track.mp3" ]; then \
+		cp -f ../resources/crystal_cave_track.mp3 resources/; \
+	fi
+	@echo "Building with cargo for $(WASM_TARGET)..."
+	@cargo build --target=$(WASM_TARGET)
+	@echo "Copying WASM artifacts to $(WASM_OUT_DIR)/"
+	@mkdir -p $(WASM_OUT_DIR)
+	@# JS file uses hyphens; .wasm and .data use underscores
+	@cp $(WASM_BUILD_DIR)/$(CRATE_NAME_HYPHEN).js $(WASM_OUT_DIR)/
+	@cp $(WASM_BUILD_DIR)/$(CRATE_NAME_UNDER).wasm $(WASM_OUT_DIR)/
+	@cp $(WASM_BUILD_DIR)/deps/$(CRATE_NAME_UNDER).data $(WASM_OUT_DIR)/ 2>/dev/null || true
+	@echo "WASM build complete! Files in $(WASM_OUT_DIR)/"
+	@ls -lh $(WASM_OUT_DIR)/*.js $(WASM_OUT_DIR)/*.wasm $(WASM_OUT_DIR)/*.data 2>/dev/null
+
+# Build WASM and start a local HTTP server to test
+serve-wasm: wasm
+	@echo "Starting HTTP server at http://localhost:8080"
+	@echo "Press Ctrl+C to stop"
+	@cd $(WASM_OUT_DIR) && python3 -m http.server 8080
+
+# Clean WASM build artifacts
+clean-wasm:
+	@echo "Cleaning WASM artifacts..."
+	@rm -rf $(WASM_OUT_DIR)/*.js $(WASM_OUT_DIR)/*.wasm $(WASM_OUT_DIR)/*.data
+	@cargo clean --target=$(WASM_TARGET) 2>/dev/null || true
+	@# Remove copied shared resources
+	@rm -f resources/crystal_cave_track.mp3
+	@echo "WASM clean complete"
