@@ -83,6 +83,13 @@ jobs:
           
           CGO_ENABLED=1 go build -o bin/raylib-quickstart-go main.go
           
+          # Ad-hoc codesign for Apple Silicon distribution
+          # The linker-signed signature gets invalidated during zip/upload/download,
+          # causing macOS kernel to SIGKILL the binary. A proper ad-hoc signature survives.
+          codesign -s - -f bin/raylib-quickstart-go
+          codesign --verify bin/raylib-quickstart-go
+          echo "✅ Binary signed and verified"
+          
           if [ -d "resources" ]; then
             mkdir -p bin/resources
             cp -r resources/* bin/resources/
