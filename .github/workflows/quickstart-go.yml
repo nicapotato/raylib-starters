@@ -32,12 +32,20 @@ on:
         default: ''
         type: string
   push:
-    branches: [ main, master, develop ]
+    branches:
+      - main
+      - master
+      - develop
+      - 'feature-**'
     paths:
       - 'quickstart-go/**'
       - '.github/workflows/quickstart-go.yml'
   pull_request:
-    branches: [ main, master, develop ]
+    branches:
+      - main
+      - master
+      - develop
+      - 'feature-**'
     paths:
       - 'quickstart-go/**'
       - '.github/workflows/quickstart-go.yml'
@@ -55,7 +63,7 @@ jobs:
   build-and-push-macos:
     runs-on: macos-latest
     timeout-minutes: 45
-    if: github.event.inputs.build_platform == 'macos' || github.event.inputs.build_platform == 'all' || (github.event.inputs.build_platform == '' && (github.event_name == 'push' || github.event_name == 'pull_request'))
+    if: github.event_name == 'workflow_dispatch' && (github.event.inputs.build_platform == 'macos' || github.event.inputs.build_platform == 'all' || github.event.inputs.build_platform == '') || (github.event_name != 'workflow_dispatch' && (github.event.inputs.build_platform == 'macos' || github.event.inputs.build_platform == 'all' || github.event.inputs.build_platform == ''))
 
     steps:
       - name: Checkout code
@@ -137,7 +145,7 @@ jobs:
   build-and-push-windows:
     runs-on: windows-latest
     timeout-minutes: 45
-    if: github.event.inputs.build_platform == 'windows' || github.event.inputs.build_platform == 'all' || (github.event.inputs.build_platform == '' && (github.event_name == 'push' || github.event_name == 'pull_request'))
+    if: github.event_name == 'workflow_dispatch' && (github.event.inputs.build_platform == 'windows' || github.event.inputs.build_platform == 'all' || github.event.inputs.build_platform == '') || (github.event_name != 'workflow_dispatch' && (github.event.inputs.build_platform == 'windows' || github.event.inputs.build_platform == 'all' || github.event.inputs.build_platform == ''))
 
     steps:
       - name: Checkout code
@@ -219,7 +227,7 @@ jobs:
   build-and-push-web:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    if: github.event.inputs.build_platform == 'web' || github.event.inputs.build_platform == 'all' || (github.event.inputs.build_platform == '' && (github.event_name == 'push' || github.event_name == 'pull_request'))
+    if: github.event_name == 'workflow_dispatch' && (github.event.inputs.build_platform == 'web' || github.event.inputs.build_platform == 'all' || github.event.inputs.build_platform == '') || (github.event_name != 'workflow_dispatch' && (github.event.inputs.build_platform == 'web' || github.event.inputs.build_platform == 'all' || github.event.inputs.build_platform == ''))
 
     steps:
       - name: Checkout code

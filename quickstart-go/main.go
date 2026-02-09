@@ -7,6 +7,8 @@ import (
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
 
+// Nick CICD Trigger I
+
 func main() {
 	// Tell the window to use vsync and work on high DPI displays
 	rl.SetConfigFlags(rl.FlagVsyncHint | rl.FlagWindowHighdpi)

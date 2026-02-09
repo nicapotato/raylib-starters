@@ -29,12 +29,20 @@ on:
         default: ''
         type: string
   push:
-    branches: [ main, master, develop ]
+    branches:
+      - main
+      - master
+      - develop
+      - 'feature-**'
     paths:
       - 'quickstart-c/**'
       - '.github/workflows/quickstart-c.yml'
   pull_request:
-    branches: [ main, master, develop ]
+    branches:
+      - main
+      - master
+      - develop
+      - 'feature-**'
     paths:
       - 'quickstart-c/**'
       - '.github/workflows/quickstart-c.yml'
