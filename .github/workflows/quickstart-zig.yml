@@ -31,7 +31,8 @@ on:
         required: false
         default: ''
         type: string
-  push:
+  pull_request:
+    types: [opened, synchronize, reopened]
     paths:
       - 'quickstart-zig/**'
 
@@ -67,7 +68,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     if: >-
-      github.event_name == 'push' ||
+      github.event_name != 'workflow_dispatch' ||
       github.event.inputs.build_platform == 'web' ||
       github.event.inputs.build_platform == 'all'
     outputs:
@@ -182,7 +183,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 45
     if: >-
-      github.event_name == 'push' ||
+      github.event_name != 'workflow_dispatch' ||
       github.event.inputs.build_platform == 'macos' ||
       github.event.inputs.build_platform == 'all'
 
@@ -289,7 +290,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 45
     if: >-
-      github.event_name == 'push' ||
+      github.event_name != 'workflow_dispatch' ||
       github.event.inputs.build_platform == 'windows' ||
       github.event.inputs.build_platform == 'all'
 
