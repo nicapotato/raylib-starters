@@ -41,16 +41,16 @@ help:
 # Build the executable (Native)
 build:
 	@echo "Building $(APP_NAME) (Native)..."
-	@zig build --prefix zig-out/mac --prefix-exe-dir . -Doptimize=ReleaseSafe
+	@bash scripts/zig-build.sh --prefix zig-out/mac --prefix-exe-dir . -Doptimize=ReleaseSafe
 
 # Build the executable (Intel x86_64)
 build-x86:
 	@echo "Building $(APP_NAME) (x86_64)..."
-	@zig build --prefix zig-out/mac --prefix-exe-dir . -Dtarget=x86_64-macos -Doptimize=ReleaseSafe
+	@bash scripts/zig-build.sh --prefix zig-out/mac --prefix-exe-dir . -Dtarget=x86_64-macos -Doptimize=ReleaseSafe
 
 # Build and run the application
 run:
-	@zig build run
+	@bash scripts/zig-build.sh run
 
 # Clean built binaries and Zig build artifacts
 clean:
@@ -68,7 +68,7 @@ test: run
 dmg:
 	@echo "==== Creating macOS DMG package (Native) ===="
 	@if [ "$$(uname)" != "Darwin" ]; then echo "Error: DMG creation is only supported on macOS"; exit 1; fi
-	@zig build package --prefix zig-out/mac --prefix-exe-dir . -Doptimize=ReleaseSafe
+	@bash scripts/zig-build.sh package --prefix zig-out/mac --prefix-exe-dir . -Doptimize=ReleaseSafe
 	@# Rename versioned DMG to standard name if needed
 	@ARCH="mac-arm64"; \
 	VERSIONED_DMG="$(APP_NAME)-$(VERSION)-$$ARCH.dmg"; \
@@ -83,7 +83,7 @@ dmg:
 dmg-x86:
 	@echo "==== Creating macOS DMG package (x86_64) ===="
 	@if [ "$$(uname)" != "Darwin" ]; then echo "Error: DMG creation is only supported on macOS"; exit 1; fi
-	@zig build package --prefix zig-out/mac --prefix-exe-dir . -Dtarget=x86_64-macos -Doptimize=ReleaseSafe
+	@bash scripts/zig-build.sh package --prefix zig-out/mac --prefix-exe-dir . -Dtarget=x86_64-macos -Doptimize=ReleaseSafe
 	@ARCH="mac-x86_64"; \
 	VERSIONED_DMG="$(APP_NAME)-$(VERSION)-$$ARCH.dmg"; \
 	if [ -f "$$VERSIONED_DMG" ]; then \
@@ -95,7 +95,7 @@ web:
 	@echo "Building for Web..."
 	@SYSROOT=$$(emcc --cflags | grep -o '\--sysroot=[^ ]*' | cut -d= -f2); \
 	if [ -z "$$SYSROOT" ]; then echo "Error: Could not determine emcc sysroot"; exit 1; fi; \
-	zig build package -Dtarget=wasm32-emscripten -Doptimize=ReleaseSmall -Dsysroot_path="$$SYSROOT"
+	bash scripts/zig-build.sh package -Dtarget=wasm32-emscripten -Doptimize=ReleaseSmall -Dsysroot_path="$$SYSROOT"
 
 # Serve Web Build
 serve: web

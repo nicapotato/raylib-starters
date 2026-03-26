@@ -339,8 +339,8 @@ jobs:
           BASE="https://${BUCKET}.s3.${REGION}.amazonaws.com"
           CATEGORY="${{ env.S3_CATEGORY }}"
           MATURITY="${{ env.S3_MATURITY }}"
-          PREFIX="${CATEGORY}/${MATURITY}/${GAME}/${VER}"
-          CATALOG_KEY="${CATEGORY}/${MATURITY}/catalog.json"
+          PREFIX="${MATURITY}/${CATEGORY}/${GAME}/${VER}"
+          CATALOG_KEY="${MATURITY}/${CATEGORY}/catalog.json"
 
           WZIP="dist/quickstart-c-pufferlib-wasm-zip/quickstart-pufferlib_wasm.zip"
           MZIP="dist/quickstart-c-pufferlib-macos-zip/raylib-quickstart-c-pufferlib-macos.zip"
@@ -385,6 +385,8 @@ jobs:
 
           NEW=$(jq -n \
             --arg released "$RELEASED" \
+            --arg mat "$MATURITY" \
+            --arg cat "$CATEGORY" \
             --arg iw "${{ env.S3_IFRAME_WIDTH }}" \
             --arg ih "${{ env.S3_IFRAME_HEIGHT }}" \
             --arg wasm_zip "${BASE}/${PREFIX}/quickstart-c-pufferlib-wasm.zip" \
@@ -395,6 +397,8 @@ jobs:
             --arg sha_win "$SHA_WIN" \
             --arg play_wasm "${BASE}/${PREFIX}/wasm/index.html" \
             '{
+              maturity: $mat,
+              category: $cat,
               released_at: $released,
               iframe: {width: ($iw | tonumber), height: ($ih | tonumber)},
               platforms: {
@@ -406,10 +410,13 @@ jobs:
 
           jq --arg game "$GAME" --arg ver "$VER" --argjson entry "$NEW" \
             --arg dn "${{ env.S3_DISPLAY_NAME }}" \
+            --arg mat "$MATURITY" \
+            --arg cat "$CATEGORY" \
             '.games //= {}
-            | .games[$game] //= {display_name: $dn, versions: {}}
+            | .games[$game] //= {display_name: $dn, maturity: $mat, category: $cat, versions: {}}
             | .games[$game].versions //= {}
-            | .games[$game].versions[$ver] = $entry' catalog.json > catalog.merged.json
+            | .games[$game].versions[$ver] = $entry
+            | .games[$game].maturity = $mat | .games[$game].category = $cat' catalog.json > catalog.merged.json
 
           aws s3 cp catalog.merged.json "s3://${BUCKET}/${CATALOG_KEY}" --content-type application/json
           echo "✅ Published prototype to s3://${BUCKET}/${PREFIX}/ and updated ${CATALOG_KEY}"
