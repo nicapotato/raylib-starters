@@ -1,0 +1,378 @@
+name: Quickstart Rust CI/CD - itch.io
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_platform:
+        description: 'Platform to build'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - web
+          - macos
+          - windows
+          - all
+      env:
+        description: 'Environment (dev or prod)'
+        required: false
+        default: 'prod'
+        type: choice
+        options:
+          - dev
+          - prod
+      version:
+        description: 'Version override (leave empty to use project.conf)'
+        required: false
+        default: ''
+        type: string
+      channel:
+        description: 'itch.io channel name override (optional)'
+        required: false
+        default: ''
+        type: string
+  push:
+    paths:
+      - 'quickstart-rust/**'
+
+permissions:
+  contents: read
+
+env:
+  PROJECT_DIR: quickstart-rust
+  ITCH_USER: nicapotato
+  ITCH_GAME: quickstart-rust
+  ENV: ${{ github.event.inputs.env || 'prod' }}
+  APP_NAME: raylib-quickstart-rust
+  # Crate name with underscores (used for .wasm and .data files)
+  CRATE_NAME_UNDER: raylib_quickstart_rust
+
+jobs:
+  build-and-push-web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: >-
+      github.event_name == 'push' ||
+      github.event.inputs.build_platform == 'web' ||
+      github.event.inputs.build_platform == 'all'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 'latest'
+
+      - name: Install system dependencies
+        run: |
+          echo "📦 Installing system dependencies..."
+          sudo apt-get update
+          sudo apt-get install -y cmake libclang-dev
+          echo "✅ System dependencies installed"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-emscripten
+
+      - name: Copy shared resources
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "📦 Copying shared resources..."
+          mkdir -p resources
+          if [ -f "../resources/crystal_cave_track.mp3" ]; then
+            cp ../resources/crystal_cave_track.mp3 resources/
+            echo "✅ Copied crystal_cave_track.mp3"
+          else
+            echo "⚠️  Shared resource crystal_cave_track.mp3 not found, skipping"
+          fi
+
+      - name: Ensure .cargo/config.toml exists
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          # The .cargo/config.toml provides EMCC_CFLAGS and rustflags for WASM builds
+          if [ ! -f ".cargo/config.toml" ]; then
+            echo "⚠️  .cargo/config.toml not found, creating..."
+            mkdir -p .cargo
+            cat > .cargo/config.toml << 'TOML'
+          [env]
+          EMCC_CFLAGS = "-O2 -sUSE_GLFW=3 -sASSERTIONS=1 -sWASM=1 -sGL_ENABLE_GET_PROC_ADDRESS=1"
+
+          [target.wasm32-unknown-emscripten]
+          rustflags = [
+              "-C", "link-args=-sUSE_GLFW=3 -sFORCE_FILESYSTEM=1 -sALLOW_MEMORY_GROWTH=1 -sGL_ENABLE_GET_PROC_ADDRESS=1 -sSTACK_SIZE=2097152 -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,HEAPF32 --preload-file resources@resources"
+          ]
+          TOML
+            echo "✅ Created .cargo/config.toml"
+          else
+            echo "✅ .cargo/config.toml already exists"
+          fi
+
+      - name: Setup deployment
+        uses: ./.github/actions/build-rust-project
+        id: setup
+        with:
+          project_dir: ${{ env.PROJECT_DIR }}
+          itch_user: ${{ env.ITCH_USER }}
+          itch_game: ${{ env.ITCH_GAME }}
+          build_platform: web
+          env: ${{ env.ENV }}
+          channel: ${{ github.event.inputs.channel }}
+          version_override: ${{ github.event.inputs.version }}
+          butler_api_key: ${{ secrets.BUTLER_API_KEY }}
+          deployment_only: 'true'
+
+      - name: Build WebAssembly version
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "🔨 Building WebAssembly version..."
+          cargo build --target=wasm32-unknown-emscripten --release
+          echo "✅ WebAssembly build complete"
+
+      - name: Package web build
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "📦 Packaging web build..."
+          ZIP_NAME="quickstart-rust-web.zip"
+          WASM_BUILD_DIR="target/wasm32-unknown-emscripten/release"
+
+          # Assemble web distribution directory
+          mkdir -p web-dist
+
+          # Copy index.html from web/ directory
+          if [ -f "web/index.html" ]; then
+            cp web/index.html web-dist/
+          else
+            echo "❌ Error: web/index.html not found"
+            exit 1
+          fi
+
+          # Copy WASM artifacts (JS uses hyphens, WASM/data use underscores)
+          cp "${WASM_BUILD_DIR}/${APP_NAME}.js" web-dist/
+          cp "${WASM_BUILD_DIR}/${CRATE_NAME_UNDER}.wasm" web-dist/
+          # Data file may be in deps/ subdirectory
+          if [ -f "${WASM_BUILD_DIR}/deps/${CRATE_NAME_UNDER}.data" ]; then
+            cp "${WASM_BUILD_DIR}/deps/${CRATE_NAME_UNDER}.data" web-dist/
+          elif [ -f "${WASM_BUILD_DIR}/${CRATE_NAME_UNDER}.data" ]; then
+            cp "${WASM_BUILD_DIR}/${CRATE_NAME_UNDER}.data" web-dist/
+          else
+            echo "⚠️  Data file not found, continuing without it"
+          fi
+
+          echo "📋 Web distribution contents:"
+          ls -lh web-dist/
+
+          # Create zip
+          cd web-dist
+          zip -r "../${ZIP_NAME}" .
+          cd ..
+
+          echo "✅ Package created: ${ZIP_NAME}"
+
+      - name: Push to itch.io (web)
+        uses: ./.github/actions/build-rust-project
+        with:
+          project_dir: ${{ env.PROJECT_DIR }}
+          itch_user: ${{ env.ITCH_USER }}
+          itch_game: ${{ env.ITCH_GAME }}
+          build_platform: web
+          env: ${{ env.ENV }}
+          channel: ${{ github.event.inputs.channel }}
+          version_override: ${{ steps.setup.outputs.version || github.event.inputs.version }}
+          butler_api_key: ${{ secrets.BUTLER_API_KEY }}
+          package_file: quickstart-rust-web.zip
+          deployment_only: 'true'
+
+  build-and-push-macos:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    if: >-
+      github.event_name == 'push' ||
+      github.event.inputs.build_platform == 'macos' ||
+      github.event.inputs.build_platform == 'all'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Copy shared resources
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "📦 Copying shared resources..."
+          mkdir -p resources
+          if [ -f "../resources/crystal_cave_track.mp3" ]; then
+            cp ../resources/crystal_cave_track.mp3 resources/
+            echo "✅ Copied crystal_cave_track.mp3"
+          else
+            echo "⚠️  Shared resource crystal_cave_track.mp3 not found, skipping"
+          fi
+
+      - name: Setup deployment
+        uses: ./.github/actions/build-rust-project
+        id: setup
+        with:
+          project_dir: ${{ env.PROJECT_DIR }}
+          itch_user: ${{ env.ITCH_USER }}
+          itch_game: ${{ env.ITCH_GAME }}
+          build_platform: macos
+          env: ${{ env.ENV }}
+          channel: ${{ github.event.inputs.channel }}
+          version_override: ${{ github.event.inputs.version }}
+          butler_api_key: ${{ secrets.BUTLER_API_KEY }}
+          deployment_only: 'true'
+
+      - name: Build macOS executable
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "🔨 Building macOS executable..."
+          cargo build --release
+
+          # Copy resources next to binary
+          mkdir -p target/release/resources
+          cp -r resources/* target/release/resources/
+
+          # Ad-hoc codesign for Apple Silicon distribution
+          # The linker-signed signature gets invalidated during zip/upload/download,
+          # causing macOS kernel to SIGKILL the binary. A proper ad-hoc signature survives.
+          codesign -s - -f target/release/${APP_NAME}
+          codesign --verify target/release/${APP_NAME}
+          echo "✅ Binary signed and verified"
+
+          echo "✅ macOS executable build complete"
+
+      - name: Package macOS build
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "📦 Packaging macOS build..."
+          ZIP_NAME="quickstart-rust-macos.zip"
+          rm -f "${ZIP_NAME}"
+
+          # Create a clean staging directory with binary + resources
+          mkdir -p staging
+          cp target/release/${APP_NAME} staging/
+          if [ -d "target/release/resources" ]; then
+            cp -r target/release/resources staging/
+          fi
+
+          cd staging
+          zip -r "../${ZIP_NAME}" .
+          cd ..
+          rm -rf staging
+
+          echo "✅ Package created: ${ZIP_NAME}"
+
+      - name: Push to itch.io (macOS)
+        uses: ./.github/actions/build-rust-project
+        with:
+          project_dir: ${{ env.PROJECT_DIR }}
+          itch_user: ${{ env.ITCH_USER }}
+          itch_game: ${{ env.ITCH_GAME }}
+          build_platform: macos
+          env: ${{ env.ENV }}
+          channel: ${{ github.event.inputs.channel }}
+          version_override: ${{ steps.setup.outputs.version || github.event.inputs.version }}
+          butler_api_key: ${{ secrets.BUTLER_API_KEY }}
+          package_file: quickstart-rust-macos.zip
+          deployment_only: 'true'
+
+  build-and-push-windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    if: >-
+      github.event_name == 'push' ||
+      github.event.inputs.build_platform == 'windows' ||
+      github.event.inputs.build_platform == 'all'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install LLVM
+        run: |
+          echo "📦 Installing LLVM for bindgen..."
+          choco install llvm -y
+          echo "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          echo "LIBCLANG_PATH=C:\Program Files\LLVM\lib" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "✅ LLVM installed"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Copy shared resources
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: bash
+        run: |
+          echo "📦 Copying shared resources..."
+          mkdir -p resources
+          if [ -f "../resources/crystal_cave_track.mp3" ]; then
+            cp ../resources/crystal_cave_track.mp3 resources/
+            echo "✅ Copied crystal_cave_track.mp3"
+          else
+            echo "⚠️  Shared resource crystal_cave_track.mp3 not found, skipping"
+          fi
+
+      - name: Setup deployment
+        uses: ./.github/actions/build-rust-project
+        id: setup
+        with:
+          project_dir: ${{ env.PROJECT_DIR }}
+          itch_user: ${{ env.ITCH_USER }}
+          itch_game: ${{ env.ITCH_GAME }}
+          build_platform: windows
+          env: ${{ env.ENV }}
+          channel: ${{ github.event.inputs.channel }}
+          version_override: ${{ github.event.inputs.version }}
+          butler_api_key: ${{ secrets.BUTLER_API_KEY }}
+          deployment_only: 'true'
+
+      - name: Build Windows executable
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: bash
+        run: |
+          echo "🔨 Building Windows executable..."
+          cargo build --release
+
+          # Copy resources next to binary
+          mkdir -p target/release/resources
+          cp -r resources/* target/release/resources/
+
+          echo "✅ Windows executable build complete"
+
+      - name: Package Windows build
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: pwsh
+        run: |
+          echo "📦 Packaging Windows build..."
+          $ZIP_NAME = "quickstart-rust-windows.zip"
+          $APP = "$env:APP_NAME"
+
+          # Create staging directory with binary + resources
+          New-Item -ItemType Directory -Force -Path staging | Out-Null
+          Copy-Item "target\release\${APP}.exe" staging\
+          if (Test-Path "target\release\resources") {
+            Copy-Item -Recurse "target\release\resources" staging\
+          }
+
+          Compress-Archive -Path "staging\*" -DestinationPath $ZIP_NAME -Force
+          Remove-Item -Recurse -Force staging
+
+          echo "✅ Package created: $ZIP_NAME"
+
+      - name: Push to itch.io (Windows)
+        uses: ./.github/actions/build-rust-project
+        with:
+          project_dir: ${{ env.PROJECT_DIR }}
+          itch_user: ${{ env.ITCH_USER }}
+          itch_game: ${{ env.ITCH_GAME }}
+          build_platform: windows
+          env: ${{ env.ENV }}
+          channel: ${{ github.event.inputs.channel }}
+          version_override: ${{ steps.setup.outputs.version || github.event.inputs.version }}
+          butler_api_key: ${{ secrets.BUTLER_API_KEY }}
+          package_file: quickstart-rust-windows.zip
+          deployment_only: 'true'

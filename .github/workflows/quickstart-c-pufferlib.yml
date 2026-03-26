@@ -1,0 +1,241 @@
+name: Quickstart C Pufferlib CI/CD - itch.io
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_platform:
+        description: 'Platform to build'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - web
+          - macos
+          - windows
+          - all
+      channel:
+        description: 'itch.io channel name (e.g., web, macos, osx)'
+        required: false
+        default: ''
+        type: string
+      version:
+        description: 'Version override (leave empty to use project.conf)'
+        required: false
+        default: ''
+        type: string
+  push:
+    paths:
+      - 'quickstart-c-pufferlib/**'
+
+permissions:
+  contents: read
+
+env:
+  PROJECT_DIR: quickstart-c-pufferlib
+  ITCH_USER: nicapotato
+  ITCH_GAME: quickstart-c-pufferlib
+
+jobs:
+  build-and-push-web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: >-
+      github.event_name == 'push' ||
+      github.event.inputs.build_platform == 'web' ||
+      github.event.inputs.build_platform == 'all'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 'latest'
+
+      - name: Build and deploy web
+        uses: ./.github/actions/build-c-project
+        with:
+          project_dir: ${{ env.PROJECT_DIR }}
+          itch_user: ${{ env.ITCH_USER }}
+          itch_game: ${{ env.ITCH_GAME }}
+          build_platform: web
+          channel: ${{ github.event.inputs.channel || 'web' }}
+          version_override: ${{ github.event.inputs.version }}
+          butler_api_key: ${{ secrets.BUTLER_API_KEY }}
+
+  build-and-push-macos:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    if: >-
+      github.event_name == 'push' ||
+      github.event.inputs.build_platform == 'macos' ||
+      github.event.inputs.build_platform == 'all'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup and build project
+        uses: ./.github/actions/build-c-project
+        id: setup
+        with:
+          project_dir: ${{ env.PROJECT_DIR }}
+          itch_user: ${{ env.ITCH_USER }}
+          itch_game: ${{ env.ITCH_GAME }}
+          build_platform: macos
+          channel: ${{ github.event.inputs.channel || 'osx' }}
+          version_override: ${{ github.event.inputs.version }}
+          butler_api_key: ${{ secrets.BUTLER_API_KEY }}
+          skip_project_build: 'true'
+
+      - name: Build macOS executable
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "🔨 Building macOS executable..."
+          mkdir -p bin/Debug
+          
+          clang src/main.c src/connect4/connect4.c \
+            -o bin/Debug/raylib-quickstart-c-pufferlib \
+            -O2 -std=c99 \
+            -I include -I raylib/src -I raylib/src/external \
+            -L raylib/src -lraylib \
+            -framework Cocoa -framework IOKit -framework OpenGL \
+            -arch arm64
+          
+          if [ -d "resources" ]; then
+            cp -r resources bin/Debug/
+          fi
+          
+          echo "✅ macOS executable build complete"
+
+      - name: Package macOS build
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "📦 Packaging macOS build..."
+          ZIP_NAME="raylib-quickstart-c-pufferlib-macos.zip"
+          rm -f "${ZIP_NAME}"
+          
+          if [ -d "bin/Debug" ]; then
+            cd bin/Debug
+            zip -r "../../${ZIP_NAME}" .
+            cd ../..
+          elif [ -d "bin/Release" ]; then
+            cd bin/Release
+            zip -r "../../${ZIP_NAME}" .
+            cd ../..
+          else
+            echo "❌ Error: No build output directory found"
+            exit 1
+          fi
+          
+          echo "✅ Package created: ${ZIP_NAME}"
+
+      - name: Push to itch.io (macOS)
+        uses: ./.github/actions/build-c-project
+        with:
+          project_dir: ${{ env.PROJECT_DIR }}
+          itch_user: ${{ env.ITCH_USER }}
+          itch_game: ${{ env.ITCH_GAME }}
+          build_platform: macos
+          channel: ${{ github.event.inputs.channel || 'osx' }}
+          version_override: ${{ steps.setup.outputs.version || github.event.inputs.version }}
+          butler_api_key: ${{ secrets.BUTLER_API_KEY }}
+          package_file: raylib-quickstart-c-pufferlib-macos.zip
+          package_source_dir: bin/Debug
+          deployment_only: 'true'
+
+  build-and-push-windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    if: >-
+      github.event_name == 'push' ||
+      github.event.inputs.build_platform == 'windows' ||
+      github.event.inputs.build_platform == 'all'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install MinGW
+        run: |
+          echo "📦 Installing MinGW..."
+          choco install mingw -y
+          $env:PATH += ";C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin"
+          echo "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          echo "✅ MinGW installed"
+
+      - name: Setup Raylib
+        uses: ./.github/actions/build-c-project
+        id: setup
+        with:
+          project_dir: ${{ env.PROJECT_DIR }}
+          itch_user: ${{ env.ITCH_USER }}
+          itch_game: ${{ env.ITCH_GAME }}
+          build_platform: windows
+          channel: ${{ github.event.inputs.channel || 'windows' }}
+          version_override: ${{ github.event.inputs.version }}
+          butler_api_key: ${{ secrets.BUTLER_API_KEY }}
+          skip_project_build: 'true'
+
+      - name: Build Windows executable
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: bash
+        run: |
+          echo "🔨 Building Windows executable..."
+          
+          mkdir -p release obj
+          
+          windres src/application.rc -o obj/resources.o -I src || echo "Warning: Resource compilation failed"
+          
+          OBJ_FILES=""
+          if [ -f "obj/resources.o" ]; then
+            OBJ_FILES="obj/resources.o"
+          fi
+          
+          if [ -n "$OBJ_FILES" ]; then
+            gcc src/main.c src/connect4/connect4.c $OBJ_FILES -o release/raylib-quickstart-c-pufferlib.exe -O2 -I include -I raylib/src -L raylib/src -lraylib -lgdi32 -lwinmm -static
+          else
+            gcc src/main.c src/connect4/connect4.c -o release/raylib-quickstart-c-pufferlib.exe -O2 -I include -I raylib/src -L raylib/src -lraylib -lgdi32 -lwinmm -static
+          fi
+          
+          if [ -d "resources" ]; then
+            cp -r resources release/resources || true
+          fi
+          
+          echo "✅ Windows build complete"
+
+      - name: Package Windows build
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: pwsh
+        run: |
+          echo "📦 Packaging Windows build..."
+          $ZIP_NAME = "raylib-quickstart-c-pufferlib-windows.zip"
+          
+          if (Test-Path "release") {
+            $SOURCE_DIR = "release"
+          } elseif (Test-Path "bin\Release") {
+            $SOURCE_DIR = "bin\Release"
+          } elseif (Test-Path "bin\Debug") {
+            $SOURCE_DIR = "bin\Debug"
+          } else {
+            Write-Host "❌ Error: No build output directory found"
+            exit 1
+          }
+          
+          Compress-Archive -Path "${SOURCE_DIR}\*" -DestinationPath $ZIP_NAME -Force
+          echo "✅ Package created: $ZIP_NAME"
+
+      - name: Push to itch.io (Windows)
+        uses: ./.github/actions/build-c-project
+        with:
+          project_dir: ${{ env.PROJECT_DIR }}
+          itch_user: ${{ env.ITCH_USER }}
+          itch_game: ${{ env.ITCH_GAME }}
+          build_platform: windows
+          channel: ${{ github.event.inputs.channel || 'windows' }}
+          version_override: ${{ steps.setup.outputs.version || github.event.inputs.version }}
+          butler_api_key: ${{ secrets.BUTLER_API_KEY }}
+          package_file: raylib-quickstart-c-pufferlib-windows.zip
+          package_source_dir: release
+          deployment_only: 'true'

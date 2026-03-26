@@ -1,6 +1,8 @@
 const std = @import("std");
 const rlz = @import("raylib_zig");
 
+// Nick CICD Trigger I
+
 pub fn build(b: *std.Build) !void {
     // 1. Project Configuration
     const version = try getProjectVersion(b.allocator, "project.conf");
@@ -63,9 +65,6 @@ pub fn build(b: *std.Build) !void {
             .install_subdir = "resources",
         });
         exe.step.dependOn(&install_resources.step);
-
-        const install_mp3 = b.addInstallFile(b.path("../resources/crystal_cave_track.mp3"), "resources/crystal_cave_track.mp3");
-        exe.step.dependOn(&install_mp3.step);
     }
 
     exe.linkLibrary(raylib_artifact);
@@ -108,7 +107,6 @@ pub fn build(b: *std.Build) !void {
             "-s",             "ASYNCIFY",
             "-s",             "USE_WEBGL2=1",
             "--preload-file", "resources",
-            "--preload-file", "../resources/crystal_cave_track.mp3@resources/crystal_cave_track.mp3",
             "--shell-file",   "minshell.html",
             "-Os", // Optimize for size
         });
@@ -150,7 +148,7 @@ pub fn build(b: *std.Build) !void {
             \\cp "$BIN_PATH" "$APP_NAME.app/Contents/MacOS/$APP_NAME"
             \\chmod +x "$APP_NAME.app/Contents/MacOS/$APP_NAME"
             \\if [ -d "resources" ]; then cp -r resources "$APP_NAME.app/Contents/Resources/"; fi
-            \\cp ../resources/crystal_cave_track.mp3 "$APP_NAME.app/Contents/Resources/resources/"
+            \\# crystal_cave_track.mp3 is already in the resources directory, copied above
             \\
             \\# Create Info.plist (simplified)
             \\PLIST="$APP_NAME.app/Contents/Info.plist"

@@ -1,0 +1,214 @@
+name: Quickstart Go CI/CD - itch.io
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_platform:
+        description: 'Platform to build'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - macos
+          - windows
+          - all
+      env:
+        description: 'Environment (dev or prod)'
+        required: false
+        default: 'prod'
+        type: choice
+        options:
+          - dev
+          - prod
+      version:
+        description: 'Version override (leave empty to use project.conf)'
+        required: false
+        default: ''
+        type: string
+      channel:
+        description: 'itch.io channel name override (optional)'
+        required: false
+        default: ''
+        type: string
+  push:
+    paths:
+      - 'quickstart-go/**'
+
+permissions:
+  contents: read
+
+env:
+  PROJECT_DIR: quickstart-go
+  ITCH_USER: nicapotato
+  ITCH_GAME: quickstart-go
+  ENV: ${{ github.event.inputs.env || 'prod' }}
+
+jobs:
+  build-and-push-macos:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    if: >-
+      github.event_name == 'push' ||
+      github.event.inputs.build_platform == 'macos' ||
+      github.event.inputs.build_platform == 'all'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Setup deployment
+        uses: ./.github/actions/build-go-project
+        id: setup
+        with:
+          project_dir: ${{ env.PROJECT_DIR }}
+          itch_user: ${{ env.ITCH_USER }}
+          itch_game: ${{ env.ITCH_GAME }}
+          build_platform: macos
+          env: ${{ env.ENV }}
+          channel: ${{ github.event.inputs.channel }}
+          version_override: ${{ github.event.inputs.version }}
+          butler_api_key: ${{ secrets.BUTLER_API_KEY }}
+          deployment_only: 'true'
+
+      - name: Build macOS executable
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "🔨 Building macOS executable..."
+          mkdir -p bin
+          
+          CGO_ENABLED=1 go build -o bin/raylib-quickstart-go main.go
+          
+          # Ad-hoc codesign for Apple Silicon distribution
+          # The linker-signed signature gets invalidated during zip/upload/download,
+          # causing macOS kernel to SIGKILL the binary. A proper ad-hoc signature survives.
+          codesign -s - -f bin/raylib-quickstart-go
+          codesign --verify bin/raylib-quickstart-go
+          echo "✅ Binary signed and verified"
+          
+          if [ -d "resources" ]; then
+            mkdir -p bin/resources
+            cp -r resources/* bin/resources/
+            if [ -f "../resources/crystal_cave_track.mp3" ]; then
+              cp ../resources/crystal_cave_track.mp3 bin/resources/ || true
+            fi
+          fi
+          
+          echo "✅ macOS executable build complete"
+
+      - name: Package macOS build
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "📦 Packaging macOS build..."
+          ZIP_NAME="quickstart-go-macos.zip"
+          rm -f "${ZIP_NAME}"
+          
+          if [ -d "bin" ]; then
+            cd bin
+            zip -r "../${ZIP_NAME}" .
+            cd ..
+          else
+            echo "❌ Error: No build output directory found"
+            exit 1
+          fi
+          
+          echo "✅ Package created: ${ZIP_NAME}"
+
+      - name: Push to itch.io (macOS)
+        uses: ./.github/actions/build-go-project
+        with:
+          project_dir: ${{ env.PROJECT_DIR }}
+          itch_user: ${{ env.ITCH_USER }}
+          itch_game: ${{ env.ITCH_GAME }}
+          build_platform: macos
+          env: ${{ env.ENV }}
+          channel: ${{ github.event.inputs.channel }}
+          version_override: ${{ steps.setup.outputs.version || github.event.inputs.version }}
+          butler_api_key: ${{ secrets.BUTLER_API_KEY }}
+          package_file: quickstart-go-macos.zip
+          deployment_only: 'true'
+
+  build-and-push-windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    if: >-
+      github.event_name == 'push' ||
+      github.event.inputs.build_platform == 'windows' ||
+      github.event.inputs.build_platform == 'all'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Setup deployment
+        uses: ./.github/actions/build-go-project
+        id: setup
+        with:
+          project_dir: ${{ env.PROJECT_DIR }}
+          itch_user: ${{ env.ITCH_USER }}
+          itch_game: ${{ env.ITCH_GAME }}
+          build_platform: windows
+          env: ${{ env.ENV }}
+          channel: ${{ github.event.inputs.channel }}
+          version_override: ${{ github.event.inputs.version }}
+          butler_api_key: ${{ secrets.BUTLER_API_KEY }}
+          deployment_only: 'true'
+
+      - name: Build Windows executable
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: bash
+        run: |
+          echo "🔨 Building Windows executable..."
+          mkdir -p bin
+          
+          CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -o bin/quickstart-go.exe main.go
+          
+          if [ -d "resources" ]; then
+            mkdir -p bin/resources
+            cp -r resources/* bin/resources/
+            if [ -f "../resources/crystal_cave_track.mp3" ]; then
+              cp ../resources/crystal_cave_track.mp3 bin/resources/ || true
+            fi
+          fi
+          
+          echo "✅ Windows executable build complete"
+
+      - name: Package Windows build
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: pwsh
+        run: |
+          echo "📦 Packaging Windows build..."
+          $ZIP_NAME = "quickstart-go-windows.zip"
+          
+          if (Test-Path "bin") {
+            $SOURCE_DIR = "bin"
+          } else {
+            Write-Host "❌ Error: No build output directory found"
+            exit 1
+          }
+          
+          Compress-Archive -Path "${SOURCE_DIR}\*" -DestinationPath $ZIP_NAME -Force
+          echo "✅ Package created: $ZIP_NAME"
+
+      - name: Push to itch.io (Windows)
+        uses: ./.github/actions/build-go-project
+        with:
+          project_dir: ${{ env.PROJECT_DIR }}
+          itch_user: ${{ env.ITCH_USER }}
+          itch_game: ${{ env.ITCH_GAME }}
+          build_platform: windows
+          env: ${{ env.ENV }}
+          channel: ${{ github.event.inputs.channel }}
+          version_override: ${{ steps.setup.outputs.version || github.event.inputs.version }}
+          butler_api_key: ${{ secrets.BUTLER_API_KEY }}
+          package_file: quickstart-go-windows.zip
+          deployment_only: 'true'
