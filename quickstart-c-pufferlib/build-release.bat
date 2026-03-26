@@ -84,8 +84,8 @@ if exist "project.conf" (
 
 echo.
 echo [6/5] Uploading to S3 (Version: %VERSION%)...
-echo Uploading to s3://prod-nicapotato-public-software/prototype/games/quickstart-c-pufferlib/%VERSION%/windows/
-aws s3 cp "%RELEASE_DIR%\%ZIP_NAME%" "s3://prod-nicapotato-public-software/prototype/games/quickstart-c-pufferlib/%VERSION%/windows/"
+echo Uploading to s3://prod-nicapotato-public-software/games/prototype/quickstart-c-pufferlib/%VERSION%/windows/
+aws s3 cp "%RELEASE_DIR%\%ZIP_NAME%" "s3://prod-nicapotato-public-software/games/prototype/quickstart-c-pufferlib/%VERSION%/windows/"
 if errorlevel 1 (
     echo [WARNING] S3 upload failed. Make sure AWS CLI is installed and configured.
 ) else (

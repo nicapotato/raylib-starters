@@ -17,8 +17,8 @@ endif
 
 # S3 Configuration
 S3_BUCKET = s3://prod-nicapotato-public-software
-S3_BASE_PATH = $(S3_BUCKET)/prototype/games/quickstart-zig/$(VERSION)/mac-arm64
-S3_BASE_PATH_WASM = $(S3_BUCKET)/prototype/games/quickstart-zig/$(VERSION)/wasm
+S3_BASE_PATH = $(S3_BUCKET)/games/prototype/quickstart-zig/$(VERSION)/mac-arm64
+S3_BASE_PATH_WASM = $(S3_BUCKET)/games/prototype/quickstart-zig/$(VERSION)/wasm
 
 # Default target
 help:

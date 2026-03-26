@@ -339,8 +339,8 @@ jobs:
           BASE="https://${BUCKET}.s3.${REGION}.amazonaws.com"
           CATEGORY="${{ env.S3_CATEGORY }}"
           MATURITY="${{ env.S3_MATURITY }}"
-          PREFIX="${MATURITY}/${CATEGORY}/${GAME}/${VER}"
-          CATALOG_KEY="${MATURITY}/${CATEGORY}/catalog.json"
+          PREFIX="${CATEGORY}/${MATURITY}/${GAME}/${VER}"
+          CATALOG_KEY="${CATEGORY}/${MATURITY}/catalog.json"
 
           WZIP="dist/quickstart-c-pufferlib-wasm-zip/quickstart-pufferlib_wasm.zip"
           MZIP="dist/quickstart-c-pufferlib-macos-zip/raylib-quickstart-c-pufferlib-macos.zip"

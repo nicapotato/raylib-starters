@@ -472,8 +472,8 @@ jobs:
           BASE="https://${BUCKET}.s3.${REGION}.amazonaws.com"
           CATEGORY="${{ env.S3_CATEGORY }}"
           MATURITY="${{ env.S3_MATURITY }}"
-          PREFIX="${MATURITY}/${CATEGORY}/${GAME}/${VER}"
-          CATALOG_KEY="${MATURITY}/${CATEGORY}/catalog.json"
+          PREFIX="${CATEGORY}/${MATURITY}/${GAME}/${VER}"
+          CATALOG_KEY="${CATEGORY}/${MATURITY}/catalog.json"
 
           WZIP="dist/quickstart-rust-wasm-zip/quickstart-rust-web.zip"
           MZIP="dist/quickstart-rust-macos-zip/quickstart-rust-macos.zip"

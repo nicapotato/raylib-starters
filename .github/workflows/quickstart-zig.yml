@@ -406,8 +406,8 @@ jobs:
           BASE="https://${BUCKET}.s3.${REGION}.amazonaws.com"
           CATEGORY="${{ env.S3_CATEGORY }}"
           MATURITY="${{ env.S3_MATURITY }}"
-          PREFIX="${MATURITY}/${CATEGORY}/${GAME}/${VER}"
-          CATALOG_KEY="${MATURITY}/${CATEGORY}/catalog.json"
+          PREFIX="${CATEGORY}/${MATURITY}/${GAME}/${VER}"
+          CATALOG_KEY="${CATEGORY}/${MATURITY}/catalog.json"
 
           WZIP="dist/quickstart-zig-wasm-zip/quickstart-zig-web.zip"
           MZIP="dist/quickstart-zig-macos-zip/quickstart-zig-macos.zip"
