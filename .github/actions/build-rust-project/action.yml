@@ -63,6 +63,10 @@ inputs:
     description: 'Only run deployment steps (skip setup and builds)'
     required: false
     default: 'false'
+  publish_itch:
+    description: "When 'false', skip Butler and itch.io push"
+    required: false
+    default: 'true'
 
 outputs:
   version:
@@ -141,19 +145,19 @@ runs:
         echo "✅ Channel name: ${FINAL_CHANNEL}"
 
     - name: Setup butler
-      if: inputs.deployment_only != 'true'
+      if: inputs.publish_itch == 'true' && inputs.deployment_only != 'true'
       uses: remarkablegames/setup-butler@v2
       with:
         butler-version: LATEST
 
     - name: Setup butler (deployment)
-      if: inputs.deployment_only == 'true'
+      if: inputs.publish_itch == 'true' && inputs.deployment_only == 'true'
       uses: remarkablegames/setup-butler@v2
       with:
         butler-version: LATEST
 
     - name: Push to itch.io (macOS)
-      if: inputs.build_platform == 'macos' && inputs.package_file != ''
+      if: inputs.publish_itch == 'true' && inputs.build_platform == 'macos' && inputs.package_file != ''
       shell: bash
       working-directory: ${{ inputs.project_dir }}
       env:
@@ -210,7 +214,7 @@ runs:
         echo "✅ Successfully pushed to itch.io!"
 
     - name: Push to itch.io (Windows)
-      if: inputs.build_platform == 'windows' && inputs.package_file != ''
+      if: inputs.publish_itch == 'true' && inputs.build_platform == 'windows' && inputs.package_file != ''
       shell: pwsh
       working-directory: ${{ inputs.project_dir }}
       env:
@@ -269,7 +273,7 @@ runs:
         Write-Host "✅ Successfully pushed to itch.io!"
 
     - name: Push to itch.io (web)
-      if: inputs.build_platform == 'web' && inputs.package_file != ''
+      if: inputs.publish_itch == 'true' && inputs.build_platform == 'web' && inputs.package_file != ''
       shell: bash
       working-directory: ${{ inputs.project_dir }}
       env:

@@ -31,12 +31,14 @@ on:
         required: false
         default: ''
         type: string
-  push:
+  pull_request:
+    types: [opened, synchronize, reopened]
     paths:
       - 'quickstart-rust/**'
 
 permissions:
   contents: read
+  id-token: write
 
 env:
   PROJECT_DIR: quickstart-rust
@@ -46,15 +48,34 @@ env:
   APP_NAME: raylib-quickstart-rust
   # Crate name with underscores (used for .wasm and .data files)
   CRATE_NAME_UNDER: raylib_quickstart_rust
+  AWS_REGION: eu-west-2
+  S3_CATEGORY: apps
+  S3_MATURITY: prototype
+  S3_GAME_KEY: quickstart-rust
+  S3_DISPLAY_NAME: 'Raylib quickstart (Rust prototype)'
+  S3_IFRAME_WIDTH: '800'
+  S3_IFRAME_HEIGHT: '600'
+  PUBLISH_ITCH: 'false'
+  PUBLISH_S3: 'true'
 
 jobs:
+  resolve-publish-flags:
+    runs-on: ubuntu-latest
+    outputs:
+      publish_s3: ${{ steps.flags.outputs.publish_s3 }}
+    steps:
+      - id: flags
+        run: echo "publish_s3=${PUBLISH_S3}" >> "$GITHUB_OUTPUT"
+
   build-and-push-web:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     if: >-
-      github.event_name == 'push' ||
+      github.event_name != 'workflow_dispatch' ||
       github.event.inputs.build_platform == 'web' ||
       github.event.inputs.build_platform == 'all'
+    outputs:
+      version: ${{ steps.setup.outputs.version }}
 
     steps:
       - name: Checkout code
@@ -123,6 +144,7 @@ jobs:
           version_override: ${{ github.event.inputs.version }}
           butler_api_key: ${{ secrets.BUTLER_API_KEY }}
           deployment_only: 'true'
+          publish_itch: ${{ env.PUBLISH_ITCH }}
 
       - name: Build WebAssembly version
         working-directory: ${{ env.PROJECT_DIR }}
@@ -184,12 +206,29 @@ jobs:
           butler_api_key: ${{ secrets.BUTLER_API_KEY }}
           package_file: quickstart-rust-web.zip
           deployment_only: 'true'
+          publish_itch: ${{ env.PUBLISH_ITCH }}
+
+      - name: Upload WASM zip artifact (S3 publish)
+        if: env.PUBLISH_S3 == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: quickstart-rust-wasm-zip
+          path: ${{ env.PROJECT_DIR }}/quickstart-rust-web.zip
+          if-no-files-found: error
+
+      - name: Upload WASM exploded artifact (S3 publish)
+        if: env.PUBLISH_S3 == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: quickstart-rust-wasm-exploded
+          path: ${{ env.PROJECT_DIR }}/web-dist/
+          if-no-files-found: error
 
   build-and-push-macos:
     runs-on: macos-latest
     timeout-minutes: 45
     if: >-
-      github.event_name == 'push' ||
+      github.event_name != 'workflow_dispatch' ||
       github.event.inputs.build_platform == 'macos' ||
       github.event.inputs.build_platform == 'all'
 
@@ -225,6 +264,7 @@ jobs:
           version_override: ${{ github.event.inputs.version }}
           butler_api_key: ${{ secrets.BUTLER_API_KEY }}
           deployment_only: 'true'
+          publish_itch: ${{ env.PUBLISH_ITCH }}
 
       - name: Build macOS executable
         working-directory: ${{ env.PROJECT_DIR }}
@@ -279,12 +319,21 @@ jobs:
           butler_api_key: ${{ secrets.BUTLER_API_KEY }}
           package_file: quickstart-rust-macos.zip
           deployment_only: 'true'
+          publish_itch: ${{ env.PUBLISH_ITCH }}
+
+      - name: Upload macOS zip artifact (S3 publish)
+        if: env.PUBLISH_S3 == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: quickstart-rust-macos-zip
+          path: ${{ env.PROJECT_DIR }}/quickstart-rust-macos.zip
+          if-no-files-found: error
 
   build-and-push-windows:
     runs-on: windows-latest
     timeout-minutes: 45
     if: >-
-      github.event_name == 'push' ||
+      github.event_name != 'workflow_dispatch' ||
       github.event.inputs.build_platform == 'windows' ||
       github.event.inputs.build_platform == 'all'
 
@@ -329,6 +378,7 @@ jobs:
           version_override: ${{ github.event.inputs.version }}
           butler_api_key: ${{ secrets.BUTLER_API_KEY }}
           deployment_only: 'true'
+          publish_itch: ${{ env.PUBLISH_ITCH }}
 
       - name: Build Windows executable
         working-directory: ${{ env.PROJECT_DIR }}
@@ -376,3 +426,130 @@ jobs:
           butler_api_key: ${{ secrets.BUTLER_API_KEY }}
           package_file: quickstart-rust-windows.zip
           deployment_only: 'true'
+          publish_itch: ${{ env.PUBLISH_ITCH }}
+
+      - name: Upload Windows zip artifact (S3 publish)
+        if: env.PUBLISH_S3 == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: quickstart-rust-windows-zip
+          path: ${{ env.PROJECT_DIR }}/quickstart-rust-windows.zip
+          if-no-files-found: error
+
+  publish-s3:
+    runs-on: ubuntu-latest
+    needs: [resolve-publish-flags, build-and-push-web, build-and-push-macos, build-and-push-windows]
+    if: |
+      needs.resolve-publish-flags.outputs.publish_s3 == 'true' &&
+      github.event_name != 'workflow_dispatch' &&
+      needs.build-and-push-web.result == 'success' &&
+      needs.build-and-push-macos.result == 'success' &&
+      needs.build-and-push-windows.result == 'success'
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_PUBLIC_SOFTWARE_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Upload zips, WASM tree, checksums, merge catalog
+        env:
+          BUCKET: ${{ secrets.S3_PUBLIC_SOFTWARE_BUCKET }}
+          VERSION: ${{ needs.build-and-push-web.outputs.version }}
+          GAME_KEY: ${{ env.S3_GAME_KEY }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+        run: |
+          set -euo pipefail
+          BUCKET="${BUCKET:-prod-nicapotato-public-software}"
+          GAME="${GAME_KEY}"
+          VER="${VERSION}"
+          REGION="${AWS_REGION}"
+          BASE="https://${BUCKET}.s3.${REGION}.amazonaws.com"
+          CATEGORY="${{ env.S3_CATEGORY }}"
+          MATURITY="${{ env.S3_MATURITY }}"
+          PREFIX="${CATEGORY}/${MATURITY}/${GAME}/${VER}"
+          CATALOG_KEY="${CATEGORY}/${MATURITY}/catalog.json"
+
+          WZIP="dist/quickstart-rust-wasm-zip/quickstart-rust-web.zip"
+          MZIP="dist/quickstart-rust-macos-zip/quickstart-rust-macos.zip"
+          WINZIP="dist/quickstart-rust-windows-zip/quickstart-rust-windows.zip"
+          WDIR="dist/quickstart-rust-wasm-exploded"
+
+          test -f "$WZIP" && test -f "$MZIP" && test -f "$WINZIP" && test -d "$WDIR"
+
+          aws s3 cp "$WZIP" "s3://${BUCKET}/${PREFIX}/quickstart-rust-wasm.zip"
+          aws s3 cp "$MZIP" "s3://${BUCKET}/${PREFIX}/quickstart-rust-macos.zip"
+          aws s3 cp "$WINZIP" "s3://${BUCKET}/${PREFIX}/quickstart-rust-windows.zip"
+
+          sha256sum "$WZIP" | awk '{print $1 "  quickstart-rust-wasm.zip"}' | aws s3 cp - "s3://${BUCKET}/${PREFIX}/quickstart-rust-wasm.zip.sha256" --content-type text/plain
+          sha256sum "$MZIP" | awk '{print $1 "  quickstart-rust-macos.zip"}' | aws s3 cp - "s3://${BUCKET}/${PREFIX}/quickstart-rust-macos.zip.sha256" --content-type text/plain
+          sha256sum "$WINZIP" | awk '{print $1 "  quickstart-rust-windows.zip"}' | aws s3 cp - "s3://${BUCKET}/${PREFIX}/quickstart-rust-windows.zip.sha256" --content-type text/plain
+
+          cd "$WDIR"
+          find . -type f | while IFS= read -r f; do
+            rel="${f#./}"
+            case "$rel" in
+              *.html) ct=text/html ;;
+              *.js)   ct=application/javascript ;;
+              *.wasm) ct=application/wasm ;;
+              *.data) ct=application/octet-stream ;;
+              *.png)  ct=image/png ;;
+              *.jpg|*.jpeg) ct=image/jpeg ;;
+              *.json) ct=application/json ;;
+              *)      ct=application/octet-stream ;;
+            esac
+            aws s3 cp "$f" "s3://${BUCKET}/${PREFIX}/wasm/${rel}" --content-type "$ct"
+          done
+          cd - >/dev/null
+
+          SHA_W=$(sha256sum "$WZIP" | awk '{print $1}')
+          SHA_M=$(sha256sum "$MZIP" | awk '{print $1}')
+          SHA_WIN=$(sha256sum "$WINZIP" | awk '{print $1}')
+          RELEASED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          if ! aws s3 cp "s3://${BUCKET}/${CATALOG_KEY}" catalog.json 2>/dev/null; then
+            echo '{"apps":{}}' > catalog.json
+          fi
+
+          NEW=$(jq -n \
+            --arg released "$RELEASED" \
+            --arg mat "$MATURITY" \
+            --arg cat "$CATEGORY" \
+            --arg iw "${{ env.S3_IFRAME_WIDTH }}" \
+            --arg ih "${{ env.S3_IFRAME_HEIGHT }}" \
+            --arg wasm_zip "${BASE}/${PREFIX}/quickstart-rust-wasm.zip" \
+            --arg sha_wasm "$SHA_W" \
+            --arg mac_zip "${BASE}/${PREFIX}/quickstart-rust-macos.zip" \
+            --arg sha_mac "$SHA_M" \
+            --arg win_zip "${BASE}/${PREFIX}/quickstart-rust-windows.zip" \
+            --arg sha_win "$SHA_WIN" \
+            --arg play_wasm "${BASE}/${PREFIX}/wasm/index.html" \
+            '{
+              maturity: $mat,
+              category: $cat,
+              released_at: $released,
+              iframe: {width: ($iw | tonumber), height: ($ih | tonumber)},
+              platforms: {
+                wasm: {zip_url: $wasm_zip, sha256: $sha_wasm, play_url: $play_wasm},
+                macos: {zip_url: $mac_zip, sha256: $sha_mac},
+                windows: {zip_url: $win_zip, sha256: $sha_win}
+              }
+            }')
+
+          jq --arg game "$GAME" --arg ver "$VER" --argjson entry "$NEW" \
+            --arg dn "${{ env.S3_DISPLAY_NAME }}" \
+            --arg mat "$MATURITY" \
+            --arg cat "$CATEGORY" \
+            '.apps //= {}
+            | .apps[$game] //= {display_name: $dn, maturity: $mat, category: $cat, versions: {}}
+            | .apps[$game].versions //= {}
+            | .apps[$game].versions[$ver] = $entry
+            | .apps[$game].maturity = $mat | .apps[$game].category = $cat' catalog.json > catalog.merged.json
+
+          aws s3 cp catalog.merged.json "s3://${BUCKET}/${CATALOG_KEY}" --content-type application/json
+          echo "✅ Published prototype to s3://${BUCKET}/${PREFIX}/ and updated ${CATALOG_KEY}"
