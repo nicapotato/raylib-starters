@@ -441,7 +441,7 @@ jobs:
     needs: [resolve-publish-flags, build-and-push-web, build-and-push-macos, build-and-push-windows]
     if: |
       needs.resolve-publish-flags.outputs.publish_s3 == 'true' &&
-      github.event_name != 'pull_request' &&
+      github.event_name != 'workflow_dispatch' &&
       needs.build-and-push-web.result == 'success' &&
       needs.build-and-push-macos.result == 'success' &&
       needs.build-and-push-windows.result == 'success'
