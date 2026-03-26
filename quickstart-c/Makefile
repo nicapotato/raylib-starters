@@ -102,7 +102,7 @@ VERSION := $(shell grep '^VERSION=' project.conf | cut -d= -f2)
 ifeq ($(VERSION),)
   VERSION := latest
 endif
-S3_BASE_PATH = s3://prod-nicapotato-public-software/games/prototype/quickstart-c/$(VERSION)/mac-arm64
+S3_BASE_PATH = s3://prod-nicapotato-public-software/apps/prototype/quickstart-c/$(VERSION)/mac-arm64
 
 dmg: raylib-quickstart
 	@echo "==== Creating macOS DMG package ===="

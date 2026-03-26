@@ -46,7 +46,7 @@ env:
   ITCH_GAME: quickstart-zig
   ENV: ${{ github.event.inputs.env || 'prod' }}
   AWS_REGION: eu-west-2
-  S3_CATEGORY: games
+  S3_CATEGORY: apps
   S3_MATURITY: prototype
   S3_GAME_KEY: quickstart-zig
   S3_DISPLAY_NAME: 'Raylib quickstart (Zig prototype)'
@@ -447,7 +447,7 @@ jobs:
           RELEASED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
           if ! aws s3 cp "s3://${BUCKET}/${CATALOG_KEY}" catalog.json 2>/dev/null; then
-            echo '{"games":{}}' > catalog.json
+            echo '{"apps":{}}' > catalog.json
           fi
 
           NEW=$(jq -n \
@@ -479,11 +479,11 @@ jobs:
             --arg dn "${{ env.S3_DISPLAY_NAME }}" \
             --arg mat "$MATURITY" \
             --arg cat "$CATEGORY" \
-            '.games //= {}
-            | .games[$game] //= {display_name: $dn, maturity: $mat, category: $cat, versions: {}}
-            | .games[$game].versions //= {}
-            | .games[$game].versions[$ver] = $entry
-            | .games[$game].maturity = $mat | .games[$game].category = $cat' catalog.json > catalog.merged.json
+            '.apps //= {}
+            | .apps[$game] //= {display_name: $dn, maturity: $mat, category: $cat, versions: {}}
+            | .apps[$game].versions //= {}
+            | .apps[$game].versions[$ver] = $entry
+            | .apps[$game].maturity = $mat | .apps[$game].category = $cat' catalog.json > catalog.merged.json
 
           aws s3 cp catalog.merged.json "s3://${BUCKET}/${CATALOG_KEY}" --content-type application/json
           echo "✅ Published prototype to s3://${BUCKET}/${PREFIX}/ and updated ${CATALOG_KEY}"

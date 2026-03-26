@@ -49,7 +49,7 @@ VERSION := $(shell grep '^VERSION=' project.conf | cut -d= -f2)
 ifeq ($(VERSION),)
   VERSION := latest
 endif
-S3_BASE_PATH = s3://prod-nicapotato-public-software/games/prototype/quickstart-c/$(VERSION)/wasm
+S3_BASE_PATH = s3://prod-nicapotato-public-software/apps/prototype/quickstart-c/$(VERSION)/wasm
 
 # Default Target
 .PHONY: all clean serve kill-port package upload
