@@ -134,12 +134,23 @@ jobs:
       - name: Build macOS executable
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          echo "🔨 Building macOS executable (Premake release_arm64)..."
-          mkdir -p resources
+          echo "🔨 Building macOS executable (clang++, arm64; raylib from setup step)..."
+          mkdir -p bin/Release resources
           if [ -f "../resources/crystal_cave_track.mp3" ]; then
             cp ../resources/crystal_cave_track.mp3 resources/
           fi
-          make config=release_arm64
+          clang++ src/main.cpp \
+            -o bin/Release/raylib-quickstart-cpp \
+            -O2 -std=c++17 \
+            -I include -I raylib/src -I raylib/src/external \
+            -L raylib/src -lraylib \
+            -framework Cocoa -framework IOKit -framework OpenGL \
+            -framework CoreAudio -framework CoreVideo \
+            -framework CoreFoundation -framework AudioToolbox \
+            -arch arm64
+          if [ -d "resources" ]; then
+            cp -r resources bin/Release/
+          fi
           echo "✅ macOS executable build complete"
 
       - name: Package macOS build

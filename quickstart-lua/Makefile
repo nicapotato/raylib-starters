@@ -1,5 +1,5 @@
 TARGET = raylib-quickstart-lua
-SRC = src/host.c
+SRC = src/host.c src/platform_cwd.c
 CC = gcc
 CFLAGS = -Wall -std=c99 -Isrc
 LDFLAGS = 

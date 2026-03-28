@@ -10,16 +10,9 @@ by Jeffery Myers is marked with CC0 1.0. To view a copy of this license, visit h
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
-#if defined(_WIN32)
-#include <windows.h>
-#else
-#include <unistd.h>
-#if defined(__APPLE__)
-#include <mach-o/dyld.h>
-#endif
-#endif
 #include "raylib.h"
 #include "resource_dir.h"
+#include "platform_cwd.h"
 
 // Lua includes
 #include <lua.h>
@@ -311,43 +304,6 @@ int luaopen_raylib(lua_State *L) {
     lua_pushcolor(L, WHITE); lua_setfield(L, -2, "WHITE");
     
     return 1;
-}
-
-/* So src/main.lua and resources/ resolve when cwd is not the project (e.g. Finder, Terminal home). */
-static int set_cwd_to_executable_dir(void) {
-    char path[4096];
-    char resolved[4096];
-    char *sep;
-
-#if defined(_WIN32)
-    DWORD n = GetModuleFileNameA(NULL, path, (DWORD)sizeof(path));
-    if (n == 0 || n >= sizeof(path)) return -1;
-    path[n] = '\0';
-    sep = strrchr(path, '\\');
-    if (!sep) sep = strrchr(path, '/');
-#else
-#if defined(__APPLE__)
-    uint32_t bufsize = (uint32_t)sizeof(path);
-    if (_NSGetExecutablePath(path, &bufsize) != 0) return -1;
-#else
-    ssize_t len = readlink("/proc/self/exe", path, sizeof(path) - 1);
-    if (len < 0) return -1;
-    path[len] = '\0';
-#endif
-    if (realpath(path, resolved) != NULL) {
-        strncpy(path, resolved, sizeof(path) - 1);
-        path[sizeof(path) - 1] = '\0';
-    }
-    sep = strrchr(path, '/');
-#endif
-    if (!sep) return -1;
-    *sep = '\0';
-#if defined(_WIN32)
-    if (!SetCurrentDirectoryA(path)) return -1;
-#else
-    if (chdir(path) != 0) return -1;
-#endif
-    return 0;
 }
 
 int main(int argc, char *argv[]) {
