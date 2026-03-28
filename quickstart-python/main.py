@@ -22,18 +22,10 @@ def main():
     init_audio_device()
 
     # Set working directory to resources folder if it exists
-    # For macOS app bundles, resources are in Contents/Resources/resources/
-    # For development, resources are in the project root
     script_dir = Path(__file__).resolve().parent
-    # Check macOS app bundle Resources directory
-    resources_path = script_dir.parent.parent / "Resources" / "resources"
-    if resources_path.is_dir():
-        os.chdir(str(resources_path))
-    elif (script_dir / "resources").is_dir():
-        # Check next to script (development)
+    if (script_dir / "resources").is_dir():
         os.chdir(str(script_dir / "resources"))
     elif Path("resources").is_dir():
-        # Check current directory (fallback)
         os.chdir("resources")
 
     # Load a texture from the resources directory
