@@ -1,4 +1,4 @@
-name: Quickstart Zig CI/CD - itch.io
+name: Quickstart C++ CI/CD - itch.io
 
 on:
   workflow_dispatch:
@@ -13,43 +13,34 @@ on:
           - macos
           - windows
           - all
-      env:
-        description: 'Environment (dev or prod)'
-        required: false
-        default: 'prod'
-        type: choice
-        options:
-          - dev
-          - prod
-      version:
-        description: 'Version override (leave empty to use project.conf)'
+      channel:
+        description: 'itch.io channel name (e.g., web, macos, osx)'
         required: false
         default: ''
         type: string
-      channel:
-        description: 'itch.io channel name override (optional)'
+      version:
+        description: 'Version override (leave empty to use project.conf)'
         required: false
         default: ''
         type: string
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
-      - 'quickstart-zig/**'
+      - 'quickstart-cpp/**'
 
 permissions:
   contents: read
   id-token: write
 
 env:
-  PROJECT_DIR: quickstart-zig
+  PROJECT_DIR: quickstart-cpp
   ITCH_USER: nicapotato
-  ITCH_GAME: quickstart-zig
-  ENV: ${{ github.event.inputs.env || 'prod' }}
+  ITCH_GAME: quickstart-cpp
   AWS_REGION: eu-west-2
   S3_CATEGORY: apps
   S3_MATURITY: prototype
-  S3_GAME_KEY: quickstart-zig
-  S3_DISPLAY_NAME: 'Raylib quickstart (Zig prototype)'
+  S3_GAME_KEY: quickstart-cpp
+  S3_DISPLAY_NAME: 'Raylib quickstart (C++ prototype)'
   S3_IFRAME_WIDTH: '800'
   S3_IFRAME_HEIGHT: '600'
   PUBLISH_ITCH: 'true'
@@ -72,7 +63,7 @@ jobs:
       github.event.inputs.build_platform == 'web' ||
       github.event.inputs.build_platform == 'all'
     outputs:
-      version: ${{ steps.setup.outputs.version }}
+      version: ${{ steps.web_build.outputs.version }}
 
     steps:
       - name: Checkout code
@@ -83,100 +74,33 @@ jobs:
         with:
           version: 'latest'
 
-      - name: Set up Zig
-        uses: mlugg/setup-zig@v2
-
-      - name: Copy shared resources
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          echo "📦 Copying shared resources..."
-          mkdir -p resources
-          if [ -f "../resources/crystal_cave_track.mp3" ]; then
-            cp ../resources/crystal_cave_track.mp3 resources/
-            echo "✅ Copied crystal_cave_track.mp3"
-          else
-            echo "⚠️  Shared resource crystal_cave_track.mp3 not found, skipping"
-          fi
-
-      - name: Setup deployment
-        uses: ./.github/actions/build-zig-project
-        id: setup
+      - name: Build and deploy web
+        id: web_build
+        uses: ./.github/actions/build-c-project
         with:
           project_dir: ${{ env.PROJECT_DIR }}
           itch_user: ${{ env.ITCH_USER }}
           itch_game: ${{ env.ITCH_GAME }}
           build_platform: web
-          env: ${{ env.ENV }}
-          channel: ${{ github.event.inputs.channel }}
+          channel: ${{ github.event.inputs.channel || 'web' }}
           version_override: ${{ github.event.inputs.version }}
           butler_api_key: ${{ secrets.BUTLER_API_KEY }}
-          deployment_only: 'true'
-          publish_itch: ${{ env.PUBLISH_ITCH }}
-
-      - name: Build WebAssembly version
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          echo "🔨 Building WebAssembly version..."
-
-          SYSROOT=$(emcc --cflags | grep -o '\--sysroot=[^ ]*' | cut -d= -f2)
-          if [ -z "$SYSROOT" ]; then
-            echo "❌ Error: Could not determine emcc sysroot"
-            exit 1
-          fi
-          echo "Emscripten sysroot: $SYSROOT"
-
-          zig build package -Dtarget=wasm32-emscripten -Doptimize=ReleaseSmall -Dsysroot_path="$SYSROOT"
-
-          echo "✅ WebAssembly build complete"
-
-      - name: Package web build
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          echo "📦 Packaging web build..."
-          ZIP_NAME="quickstart-zig-web.zip"
-
-          if [ -d "zig-out/wasm" ]; then
-            # Remove the auto-generated zip if present to avoid nesting
-            rm -f zig-out/wasm/*_wasm.zip
-            cd zig-out/wasm
-            zip -r "../../${ZIP_NAME}" .
-            cd ../..
-          else
-            echo "❌ Error: zig-out/wasm directory not found"
-            exit 1
-          fi
-
-          echo "✅ Package created: ${ZIP_NAME}"
-
-      - name: Push to itch.io (web)
-        uses: ./.github/actions/build-zig-project
-        with:
-          project_dir: ${{ env.PROJECT_DIR }}
-          itch_user: ${{ env.ITCH_USER }}
-          itch_game: ${{ env.ITCH_GAME }}
-          build_platform: web
-          env: ${{ env.ENV }}
-          channel: ${{ github.event.inputs.channel }}
-          version_override: ${{ steps.setup.outputs.version || github.event.inputs.version }}
-          butler_api_key: ${{ secrets.BUTLER_API_KEY }}
-          package_file: quickstart-zig-web.zip
-          deployment_only: 'true'
           publish_itch: ${{ env.PUBLISH_ITCH }}
 
       - name: Upload WASM zip artifact (S3 publish)
         if: env.PUBLISH_S3 == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: quickstart-zig-wasm-zip
-          path: ${{ env.PROJECT_DIR }}/quickstart-zig-web.zip
+          name: quickstart-cpp-wasm-zip
+          path: ${{ env.PROJECT_DIR }}/bin/wasm/raylib-quickstart-cpp_wasm.zip
           if-no-files-found: error
 
       - name: Upload WASM exploded artifact (S3 publish)
         if: env.PUBLISH_S3 == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: quickstart-zig-wasm-exploded
-          path: ${{ env.PROJECT_DIR }}/zig-out/wasm/
+          name: quickstart-cpp-wasm-exploded
+          path: ${{ env.PROJECT_DIR }}/bin/wasm/
           if-no-files-found: error
 
   build-and-push-macos:
@@ -186,66 +110,62 @@ jobs:
       github.event_name != 'workflow_dispatch' ||
       github.event.inputs.build_platform == 'macos' ||
       github.event.inputs.build_platform == 'all'
+    outputs:
+      version: ${{ steps.setup.outputs.version }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Zig
-        uses: mlugg/setup-zig@v2
-
-      - name: Copy shared resources
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          echo "📦 Copying shared resources..."
-          mkdir -p resources
-          if [ -f "../resources/crystal_cave_track.mp3" ]; then
-            cp ../resources/crystal_cave_track.mp3 resources/
-            echo "✅ Copied crystal_cave_track.mp3"
-          else
-            echo "⚠️  Shared resource crystal_cave_track.mp3 not found, skipping"
-          fi
-
-      - name: Setup deployment
-        uses: ./.github/actions/build-zig-project
+      - name: Setup and build project
+        uses: ./.github/actions/build-c-project
         id: setup
         with:
           project_dir: ${{ env.PROJECT_DIR }}
           itch_user: ${{ env.ITCH_USER }}
           itch_game: ${{ env.ITCH_GAME }}
           build_platform: macos
-          env: ${{ env.ENV }}
-          channel: ${{ github.event.inputs.channel }}
+          channel: ${{ github.event.inputs.channel || 'osx' }}
           version_override: ${{ github.event.inputs.version }}
           butler_api_key: ${{ secrets.BUTLER_API_KEY }}
-          deployment_only: 'true'
+          skip_project_build: 'true'
           publish_itch: ${{ env.PUBLISH_ITCH }}
 
       - name: Build macOS executable
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          echo "🔨 Building macOS executable..."
-          # scripts/zig-build.sh retries after patch-raylib-xcode-mirror.sh if hexops git URL fails (repo removed from GitHub).
-          bash scripts/zig-build.sh -Doptimize=ReleaseSafe
-
-          # Ad-hoc codesign for Apple Silicon distribution
-          # The linker-signed signature gets invalidated during zip/upload/download,
-          # causing macOS kernel to SIGKILL the binary. A proper ad-hoc signature survives.
-          codesign -s - -f zig-out/bin/raylib-quickstart-zig
-          codesign --verify zig-out/bin/raylib-quickstart-zig
-          echo "✅ Binary signed and verified"
-
+          echo "🔨 Building macOS executable (clang++, arm64; raylib from setup step)..."
+          mkdir -p bin/Release resources
+          if [ -f "../resources/crystal_cave_track.mp3" ]; then
+            cp ../resources/crystal_cave_track.mp3 resources/
+          fi
+          clang++ src/main.cpp \
+            -o bin/Release/raylib-quickstart-cpp \
+            -O2 -std=c++17 \
+            -I include -I raylib/src -I raylib/src/external \
+            -L raylib/src -lraylib \
+            -framework Cocoa -framework IOKit -framework OpenGL \
+            -framework CoreAudio -framework CoreVideo \
+            -framework CoreFoundation -framework AudioToolbox \
+            -arch arm64
+          if [ -d "resources" ]; then
+            cp -r resources bin/Release/
+          fi
           echo "✅ macOS executable build complete"
 
       - name: Package macOS build
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           echo "📦 Packaging macOS build..."
-          ZIP_NAME="quickstart-zig-macos.zip"
+          ZIP_NAME="raylib-quickstart-cpp-macos.zip"
           rm -f "${ZIP_NAME}"
 
-          if [ -d "zig-out/bin" ]; then
-            cd zig-out/bin
+          if [ -d "bin/Release" ]; then
+            cd bin/Release
+            zip -r "../../${ZIP_NAME}" .
+            cd ../..
+          elif [ -d "bin/Debug" ]; then
+            cd bin/Debug
             zip -r "../../${ZIP_NAME}" .
             cd ../..
           else
@@ -256,17 +176,17 @@ jobs:
           echo "✅ Package created: ${ZIP_NAME}"
 
       - name: Push to itch.io (macOS)
-        uses: ./.github/actions/build-zig-project
+        uses: ./.github/actions/build-c-project
         with:
           project_dir: ${{ env.PROJECT_DIR }}
           itch_user: ${{ env.ITCH_USER }}
           itch_game: ${{ env.ITCH_GAME }}
           build_platform: macos
-          env: ${{ env.ENV }}
-          channel: ${{ github.event.inputs.channel }}
+          channel: ${{ github.event.inputs.channel || 'osx' }}
           version_override: ${{ steps.setup.outputs.version || github.event.inputs.version }}
           butler_api_key: ${{ secrets.BUTLER_API_KEY }}
-          package_file: quickstart-zig-macos.zip
+          package_file: raylib-quickstart-cpp-macos.zip
+          package_source_dir: bin/Release
           deployment_only: 'true'
           publish_itch: ${{ env.PUBLISH_ITCH }}
 
@@ -274,8 +194,8 @@ jobs:
         if: env.PUBLISH_S3 == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: quickstart-zig-macos-zip
-          path: ${{ env.PROJECT_DIR }}/quickstart-zig-macos.zip
+          name: quickstart-cpp-macos-zip
+          path: ${{ env.PROJECT_DIR }}/raylib-quickstart-cpp-macos.zip
           if-no-files-found: error
 
   build-and-push-windows:
@@ -285,40 +205,33 @@ jobs:
       github.event_name != 'workflow_dispatch' ||
       github.event.inputs.build_platform == 'windows' ||
       github.event.inputs.build_platform == 'all'
+    outputs:
+      version: ${{ steps.setup.outputs.version }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Zig
-        uses: mlugg/setup-zig@v2
-
-      - name: Copy shared resources
-        working-directory: ${{ env.PROJECT_DIR }}
-        shell: bash
+      - name: Install MinGW
         run: |
-          echo "📦 Copying shared resources..."
-          mkdir -p resources
-          if [ -f "../resources/crystal_cave_track.mp3" ]; then
-            cp ../resources/crystal_cave_track.mp3 resources/
-            echo "✅ Copied crystal_cave_track.mp3"
-          else
-            echo "⚠️  Shared resource crystal_cave_track.mp3 not found, skipping"
-          fi
+          echo "📦 Installing MinGW..."
+          choco install mingw -y
+          $env:PATH += ";C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin"
+          echo "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          echo "✅ MinGW installed"
 
-      - name: Setup deployment
-        uses: ./.github/actions/build-zig-project
+      - name: Setup Raylib
+        uses: ./.github/actions/build-c-project
         id: setup
         with:
           project_dir: ${{ env.PROJECT_DIR }}
           itch_user: ${{ env.ITCH_USER }}
           itch_game: ${{ env.ITCH_GAME }}
           build_platform: windows
-          env: ${{ env.ENV }}
-          channel: ${{ github.event.inputs.channel }}
+          channel: ${{ github.event.inputs.channel || 'windows' }}
           version_override: ${{ github.event.inputs.version }}
           butler_api_key: ${{ secrets.BUTLER_API_KEY }}
-          deployment_only: 'true'
+          skip_project_build: 'true'
           publish_itch: ${{ env.PUBLISH_ITCH }}
 
       - name: Build Windows executable
@@ -326,19 +239,45 @@ jobs:
         shell: bash
         run: |
           echo "🔨 Building Windows executable..."
-          zig build -Doptimize=ReleaseSafe
 
-          echo "✅ Windows executable build complete"
+          mkdir -p release obj
+
+          windres src/application.rc -o obj/resources.o -I src || echo "Warning: Resource compilation failed"
+
+          OBJ_FILES=""
+          if [ -f "obj/resources.o" ]; then
+            OBJ_FILES="obj/resources.o"
+          fi
+
+          if [ -n "$OBJ_FILES" ]; then
+            g++ src/main.cpp $OBJ_FILES -o release/raylib-quickstart-cpp.exe -O2 -std=c++17 -I include -I raylib/src -I raylib/src/external -L raylib/src -lraylib -lgdi32 -lwinmm -static
+          else
+            g++ src/main.cpp -o release/raylib-quickstart-cpp.exe -O2 -std=c++17 -I include -I raylib/src -I raylib/src/external -L raylib/src -lraylib -lgdi32 -lwinmm -static
+          fi
+
+          if [ -d "resources" ]; then
+            cp -r resources release/resources || true
+          fi
+          if [ -f "../resources/crystal_cave_track.mp3" ]; then
+            mkdir -p release/resources
+            cp ../resources/crystal_cave_track.mp3 release/resources/ || true
+          fi
+
+          echo "✅ Windows build complete"
 
       - name: Package Windows build
         working-directory: ${{ env.PROJECT_DIR }}
         shell: pwsh
         run: |
           echo "📦 Packaging Windows build..."
-          $ZIP_NAME = "quickstart-zig-windows.zip"
+          $ZIP_NAME = "raylib-quickstart-cpp-windows.zip"
 
-          if (Test-Path "zig-out\bin") {
-            $SOURCE_DIR = "zig-out\bin"
+          if (Test-Path "release") {
+            $SOURCE_DIR = "release"
+          } elseif (Test-Path "bin\Release") {
+            $SOURCE_DIR = "bin\Release"
+          } elseif (Test-Path "bin\Debug") {
+            $SOURCE_DIR = "bin\Debug"
           } else {
             Write-Host "❌ Error: No build output directory found"
             exit 1
@@ -348,17 +287,17 @@ jobs:
           echo "✅ Package created: $ZIP_NAME"
 
       - name: Push to itch.io (Windows)
-        uses: ./.github/actions/build-zig-project
+        uses: ./.github/actions/build-c-project
         with:
           project_dir: ${{ env.PROJECT_DIR }}
           itch_user: ${{ env.ITCH_USER }}
           itch_game: ${{ env.ITCH_GAME }}
           build_platform: windows
-          env: ${{ env.ENV }}
-          channel: ${{ github.event.inputs.channel }}
+          channel: ${{ github.event.inputs.channel || 'windows' }}
           version_override: ${{ steps.setup.outputs.version || github.event.inputs.version }}
           butler_api_key: ${{ secrets.BUTLER_API_KEY }}
-          package_file: quickstart-zig-windows.zip
+          package_file: raylib-quickstart-cpp-windows.zip
+          package_source_dir: release
           deployment_only: 'true'
           publish_itch: ${{ env.PUBLISH_ITCH }}
 
@@ -366,8 +305,8 @@ jobs:
         if: env.PUBLISH_S3 == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: quickstart-zig-windows-zip
-          path: ${{ env.PROJECT_DIR }}/quickstart-zig-windows.zip
+          name: quickstart-cpp-windows-zip
+          path: ${{ env.PROJECT_DIR }}/raylib-quickstart-cpp-windows.zip
           if-no-files-found: error
 
   publish-s3:
@@ -409,20 +348,20 @@ jobs:
           PREFIX="${CATEGORY}/${MATURITY}/${GAME}/${VER}"
           CATALOG_KEY="${CATEGORY}/${MATURITY}/catalog.json"
 
-          WZIP="dist/quickstart-zig-wasm-zip/quickstart-zig-web.zip"
-          MZIP="dist/quickstart-zig-macos-zip/quickstart-zig-macos.zip"
-          WINZIP="dist/quickstart-zig-windows-zip/quickstart-zig-windows.zip"
-          WDIR="dist/quickstart-zig-wasm-exploded"
+          WZIP="dist/quickstart-cpp-wasm-zip/raylib-quickstart-cpp_wasm.zip"
+          MZIP="dist/quickstart-cpp-macos-zip/raylib-quickstart-cpp-macos.zip"
+          WINZIP="dist/quickstart-cpp-windows-zip/raylib-quickstart-cpp-windows.zip"
+          WDIR="dist/quickstart-cpp-wasm-exploded"
 
           test -f "$WZIP" && test -f "$MZIP" && test -f "$WINZIP" && test -d "$WDIR"
 
-          aws s3 cp "$WZIP" "s3://${BUCKET}/${PREFIX}/quickstart-zig-wasm.zip"
-          aws s3 cp "$MZIP" "s3://${BUCKET}/${PREFIX}/quickstart-zig-macos.zip"
-          aws s3 cp "$WINZIP" "s3://${BUCKET}/${PREFIX}/quickstart-zig-windows.zip"
+          aws s3 cp "$WZIP" "s3://${BUCKET}/${PREFIX}/quickstart-cpp-wasm.zip"
+          aws s3 cp "$MZIP" "s3://${BUCKET}/${PREFIX}/quickstart-cpp-macos.zip"
+          aws s3 cp "$WINZIP" "s3://${BUCKET}/${PREFIX}/quickstart-cpp-windows.zip"
 
-          sha256sum "$WZIP" | awk '{print $1 "  quickstart-zig-wasm.zip"}' | aws s3 cp - "s3://${BUCKET}/${PREFIX}/quickstart-zig-wasm.zip.sha256" --content-type text/plain
-          sha256sum "$MZIP" | awk '{print $1 "  quickstart-zig-macos.zip"}' | aws s3 cp - "s3://${BUCKET}/${PREFIX}/quickstart-zig-macos.zip.sha256" --content-type text/plain
-          sha256sum "$WINZIP" | awk '{print $1 "  quickstart-zig-windows.zip"}' | aws s3 cp - "s3://${BUCKET}/${PREFIX}/quickstart-zig-windows.zip.sha256" --content-type text/plain
+          sha256sum "$WZIP" | awk '{print $1 "  quickstart-cpp-wasm.zip"}' | aws s3 cp - "s3://${BUCKET}/${PREFIX}/quickstart-cpp-wasm.zip.sha256" --content-type text/plain
+          sha256sum "$MZIP" | awk '{print $1 "  quickstart-cpp-macos.zip"}' | aws s3 cp - "s3://${BUCKET}/${PREFIX}/quickstart-cpp-macos.zip.sha256" --content-type text/plain
+          sha256sum "$WINZIP" | awk '{print $1 "  quickstart-cpp-windows.zip"}' | aws s3 cp - "s3://${BUCKET}/${PREFIX}/quickstart-cpp-windows.zip.sha256" --content-type text/plain
 
           cd "$WDIR"
           find . -type f | while IFS= read -r f; do
@@ -456,11 +395,11 @@ jobs:
             --arg cat "$CATEGORY" \
             --arg iw "${{ env.S3_IFRAME_WIDTH }}" \
             --arg ih "${{ env.S3_IFRAME_HEIGHT }}" \
-            --arg wasm_zip "${BASE}/${PREFIX}/quickstart-zig-wasm.zip" \
+            --arg wasm_zip "${BASE}/${PREFIX}/quickstart-cpp-wasm.zip" \
             --arg sha_wasm "$SHA_W" \
-            --arg mac_zip "${BASE}/${PREFIX}/quickstart-zig-macos.zip" \
+            --arg mac_zip "${BASE}/${PREFIX}/quickstart-cpp-macos.zip" \
             --arg sha_mac "$SHA_M" \
-            --arg win_zip "${BASE}/${PREFIX}/quickstart-zig-windows.zip" \
+            --arg win_zip "${BASE}/${PREFIX}/quickstart-cpp-windows.zip" \
             --arg sha_win "$SHA_WIN" \
             --arg play_wasm "${BASE}/${PREFIX}/wasm/index.html" \
             '{

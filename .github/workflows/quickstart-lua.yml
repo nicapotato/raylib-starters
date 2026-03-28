@@ -1,4 +1,4 @@
-name: Quickstart Go CI/CD - itch.io
+name: Quickstart Lua CI/CD - itch.io
 
 on:
   workflow_dispatch:
@@ -33,22 +33,22 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
-      - 'quickstart-go/**'
+      - 'quickstart-lua/**'
 
 permissions:
   contents: read
   id-token: write
 
 env:
-  PROJECT_DIR: quickstart-go
+  PROJECT_DIR: quickstart-lua
   ITCH_USER: nicapotato
-  ITCH_GAME: quickstart-go
+  ITCH_GAME: quickstart-lua
   ENV: ${{ github.event.inputs.env || 'prod' }}
   AWS_REGION: eu-west-2
   S3_CATEGORY: apps
   S3_MATURITY: prototype
-  S3_GAME_KEY: quickstart-go
-  S3_DISPLAY_NAME: 'Raylib quickstart (Go prototype)'
+  S3_GAME_KEY: quickstart-lua
+  S3_DISPLAY_NAME: 'Raylib quickstart (Lua prototype)'
   S3_IFRAME_WIDTH: '800'
   S3_IFRAME_HEIGHT: '600'
   PUBLISH_ITCH: 'true'
@@ -77,10 +77,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.21'
+      - name: Install dependencies (Homebrew)
+        run: |
+          brew install raylib lua pkg-config
 
       - name: Setup deployment
         uses: ./.github/actions/build-go-project
@@ -100,41 +99,26 @@ jobs:
       - name: Build macOS executable
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          echo "🔨 Building macOS executable..."
-          mkdir -p bin
-          
-          CGO_ENABLED=1 go build -o bin/raylib-quickstart-go main.go
-          
-          codesign -s - -f bin/raylib-quickstart-go
-          codesign --verify bin/raylib-quickstart-go
-          echo "✅ Binary signed and verified"
-          
-          if [ -d "resources" ]; then
-            mkdir -p bin/resources
-            cp -r resources/* bin/resources/
-            if [ -f "../resources/crystal_cave_track.mp3" ]; then
-              cp ../resources/crystal_cave_track.mp3 bin/resources/ || true
-            fi
+          echo "🔨 Building macOS Lua host..."
+          mkdir -p resources
+          if [ -f "../resources/crystal_cave_track.mp3" ]; then
+            cp ../resources/crystal_cave_track.mp3 resources/
           fi
-          
-          echo "✅ macOS executable build complete"
+          make
+          echo "✅ Build complete"
 
       - name: Package macOS build
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           echo "📦 Packaging macOS build..."
-          ZIP_NAME="quickstart-go-macos.zip"
+          ZIP_NAME="quickstart-lua-macos.zip"
           rm -f "${ZIP_NAME}"
-          
-          if [ -d "bin" ]; then
-            cd bin
-            zip -r "../${ZIP_NAME}" .
-            cd ..
-          else
-            echo "❌ Error: No build output directory found"
-            exit 1
-          fi
-          
+          mkdir -p pkg
+          cp raylib-quickstart-lua pkg/
+          cp -r src pkg/
+          cp -r resources pkg/
+          cd pkg && zip -r "../${ZIP_NAME}" . && cd ..
+          rm -rf pkg
           echo "✅ Package created: ${ZIP_NAME}"
 
       - name: Push to itch.io (macOS)
@@ -148,7 +132,7 @@ jobs:
           channel: ${{ github.event.inputs.channel }}
           version_override: ${{ steps.setup.outputs.version || github.event.inputs.version }}
           butler_api_key: ${{ secrets.BUTLER_API_KEY }}
-          package_file: quickstart-go-macos.zip
+          package_file: quickstart-lua-macos.zip
           deployment_only: 'true'
           publish_itch: ${{ env.PUBLISH_ITCH }}
 
@@ -156,8 +140,8 @@ jobs:
         if: env.PUBLISH_S3 == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: quickstart-go-macos-zip
-          path: ${{ env.PROJECT_DIR }}/quickstart-go-macos.zip
+          name: quickstart-lua-macos-zip
+          path: ${{ env.PROJECT_DIR }}/quickstart-lua-macos.zip
           if-no-files-found: error
 
   build-and-push-windows:
@@ -174,10 +158,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - name: Setup MSYS2 and build dependencies
+        uses: msys2/setup-msys2@v2
         with:
-          go-version: '1.21'
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-make
+            mingw-w64-x86_64-pkg-config
+            mingw-w64-x86_64-raylib
+            mingw-w64-x86_64-lua
 
       - name: Setup deployment
         uses: ./.github/actions/build-go-project
@@ -195,40 +186,34 @@ jobs:
           publish_itch: ${{ env.PUBLISH_ITCH }}
 
       - name: Build Windows executable
+        shell: msys2 {0}
         working-directory: ${{ env.PROJECT_DIR }}
-        shell: bash
         run: |
-          echo "🔨 Building Windows executable..."
-          mkdir -p bin
-          
-          CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -o bin/quickstart-go.exe main.go
-          
-          if [ -d "resources" ]; then
-            mkdir -p bin/resources
-            cp -r resources/* bin/resources/
-            if [ -f "../resources/crystal_cave_track.mp3" ]; then
-              cp ../resources/crystal_cave_track.mp3 bin/resources/ || true
-            fi
+          echo "🔨 Building Windows Lua host..."
+          mkdir -p resources
+          if [ -f "../resources/crystal_cave_track.mp3" ]; then
+            cp ../resources/crystal_cave_track.mp3 resources/
           fi
-          
-          echo "✅ Windows executable build complete"
+          mingw32-make CC=gcc
+          echo "✅ Build complete"
+          ls -la
+          test -f raylib-quickstart-lua.exe || test -f raylib-quickstart-lua
 
       - name: Package Windows build
         working-directory: ${{ env.PROJECT_DIR }}
         shell: pwsh
         run: |
-          echo "📦 Packaging Windows build..."
-          $ZIP_NAME = "quickstart-go-windows.zip"
-          
-          if (Test-Path "bin") {
-            $SOURCE_DIR = "bin"
-          } else {
-            Write-Host "❌ Error: No build output directory found"
-            exit 1
-          }
-          
-          Compress-Archive -Path "${SOURCE_DIR}\*" -DestinationPath $ZIP_NAME -Force
-          echo "✅ Package created: $ZIP_NAME"
+          $ZIP_NAME = "quickstart-lua-windows.zip"
+          $exe = if (Test-Path "raylib-quickstart-lua.exe") { "raylib-quickstart-lua.exe" } elseif (Test-Path "raylib-quickstart-lua") { "raylib-quickstart-lua" } else { throw "Lua host binary not found" }
+          $staging = "pkg-win"
+          Remove-Item -Recurse -Force $staging -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $staging | Out-Null
+          Copy-Item $exe (Join-Path $staging (Split-Path $exe -Leaf))
+          Copy-Item -Recurse "src" $staging
+          Copy-Item -Recurse "resources" $staging
+          Compress-Archive -Path "$staging\*" -DestinationPath $ZIP_NAME -Force
+          Remove-Item -Recurse -Force $staging
+          Write-Host "✅ Package created: $ZIP_NAME"
 
       - name: Push to itch.io (Windows)
         uses: ./.github/actions/build-go-project
@@ -241,7 +226,7 @@ jobs:
           channel: ${{ github.event.inputs.channel }}
           version_override: ${{ steps.setup.outputs.version || github.event.inputs.version }}
           butler_api_key: ${{ secrets.BUTLER_API_KEY }}
-          package_file: quickstart-go-windows.zip
+          package_file: quickstart-lua-windows.zip
           deployment_only: 'true'
           publish_itch: ${{ env.PUBLISH_ITCH }}
 
@@ -249,8 +234,8 @@ jobs:
         if: env.PUBLISH_S3 == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: quickstart-go-windows-zip
-          path: ${{ env.PROJECT_DIR }}/quickstart-go-windows.zip
+          name: quickstart-lua-windows-zip
+          path: ${{ env.PROJECT_DIR }}/quickstart-lua-windows.zip
           if-no-files-found: error
 
   publish-s3:
@@ -291,16 +276,16 @@ jobs:
           PREFIX="${CATEGORY}/${MATURITY}/${GAME}/${VER}"
           CATALOG_KEY="${CATEGORY}/${MATURITY}/catalog.json"
 
-          MZIP="dist/quickstart-go-macos-zip/quickstart-go-macos.zip"
-          WINZIP="dist/quickstart-go-windows-zip/quickstart-go-windows.zip"
+          MZIP="dist/quickstart-lua-macos-zip/quickstart-lua-macos.zip"
+          WINZIP="dist/quickstart-lua-windows-zip/quickstart-lua-windows.zip"
 
           test -f "$MZIP" && test -f "$WINZIP"
 
-          aws s3 cp "$MZIP" "s3://${BUCKET}/${PREFIX}/quickstart-go-macos.zip"
-          aws s3 cp "$WINZIP" "s3://${BUCKET}/${PREFIX}/quickstart-go-windows.zip"
+          aws s3 cp "$MZIP" "s3://${BUCKET}/${PREFIX}/quickstart-lua-macos.zip"
+          aws s3 cp "$WINZIP" "s3://${BUCKET}/${PREFIX}/quickstart-lua-windows.zip"
 
-          sha256sum "$MZIP" | awk '{print $1 "  quickstart-go-macos.zip"}' | aws s3 cp - "s3://${BUCKET}/${PREFIX}/quickstart-go-macos.zip.sha256" --content-type text/plain
-          sha256sum "$WINZIP" | awk '{print $1 "  quickstart-go-windows.zip"}' | aws s3 cp - "s3://${BUCKET}/${PREFIX}/quickstart-go-windows.zip.sha256" --content-type text/plain
+          sha256sum "$MZIP" | awk '{print $1 "  quickstart-lua-macos.zip"}' | aws s3 cp - "s3://${BUCKET}/${PREFIX}/quickstart-lua-macos.zip.sha256" --content-type text/plain
+          sha256sum "$WINZIP" | awk '{print $1 "  quickstart-lua-windows.zip"}' | aws s3 cp - "s3://${BUCKET}/${PREFIX}/quickstart-lua-windows.zip.sha256" --content-type text/plain
 
           SHA_M=$(sha256sum "$MZIP" | awk '{print $1}')
           SHA_WIN=$(sha256sum "$WINZIP" | awk '{print $1}')
@@ -316,9 +301,9 @@ jobs:
             --arg cat "$CATEGORY" \
             --arg iw "${{ env.S3_IFRAME_WIDTH }}" \
             --arg ih "${{ env.S3_IFRAME_HEIGHT }}" \
-            --arg mac_zip "${BASE}/${PREFIX}/quickstart-go-macos.zip" \
+            --arg mac_zip "${BASE}/${PREFIX}/quickstart-lua-macos.zip" \
             --arg sha_mac "$SHA_M" \
-            --arg win_zip "${BASE}/${PREFIX}/quickstart-go-windows.zip" \
+            --arg win_zip "${BASE}/${PREFIX}/quickstart-lua-windows.zip" \
             --arg sha_win "$SHA_WIN" \
             '{
               maturity: $mat,

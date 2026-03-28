@@ -9,8 +9,10 @@ by Jeffery Myers is marked with CC0 1.0. To view a copy of this license, visit h
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 #include "raylib.h"
 #include "resource_dir.h"
+#include "platform_cwd.h"
 
 // Lua includes
 #include <lua.h>
@@ -305,6 +307,10 @@ int luaopen_raylib(lua_State *L) {
 }
 
 int main(int argc, char *argv[]) {
+    (void)argc;
+    (void)argv;
+    set_cwd_to_executable_dir();
+
     lua_State *L = luaL_newstate();
     luaL_openlibs(L);
     

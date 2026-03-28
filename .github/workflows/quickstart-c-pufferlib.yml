@@ -43,7 +43,7 @@ env:
   S3_DISPLAY_NAME: 'Raylib quickstart Pufferlib (C prototype)'
   S3_IFRAME_WIDTH: '800'
   S3_IFRAME_HEIGHT: '600'
-  PUBLISH_ITCH: 'false'
+  PUBLISH_ITCH: 'true'
   PUBLISH_S3: 'true'
 
 jobs:
