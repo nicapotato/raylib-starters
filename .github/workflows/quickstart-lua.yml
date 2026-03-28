@@ -115,6 +115,8 @@ jobs:
           rm -f "${ZIP_NAME}"
           mkdir -p pkg
           cp raylib-quickstart-lua pkg/
+          # Ship Homebrew dylibs next to the binary (itch users lack /opt/homebrew paths)
+          python3 scripts/bundle-macos-dylibs.py pkg/raylib-quickstart-lua
           cp -r src pkg/
           cp -r resources pkg/
           cd pkg && zip -r "../${ZIP_NAME}" . && cd ..
