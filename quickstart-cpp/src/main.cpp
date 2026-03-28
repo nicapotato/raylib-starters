@@ -2,7 +2,7 @@
 
 #include "resource_dir.h"	// utility header for SearchAndSetResourceDir
 
-// Trigger
+// Trigger I
 
 int main ()
 {
