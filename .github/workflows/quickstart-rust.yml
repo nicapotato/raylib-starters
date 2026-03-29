@@ -285,25 +285,14 @@ jobs:
 
           echo "✅ macOS executable build complete"
 
-      - name: Package macOS build
+      - name: Package macOS build (.app for Finder icon)
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          echo "📦 Packaging macOS build..."
+          echo "📦 Creating .app bundle and zip..."
+          make app-bundle
           ZIP_NAME="quickstart-rust-macos.zip"
           rm -f "${ZIP_NAME}"
-
-          # Create a clean staging directory with binary + resources
-          mkdir -p staging
-          cp target/release/${APP_NAME} staging/
-          if [ -d "target/release/resources" ]; then
-            cp -r target/release/resources staging/
-          fi
-
-          cd staging
-          zip -r "../${ZIP_NAME}" .
-          cd ..
-          rm -rf staging
-
+          zip -r "${ZIP_NAME}" "raylib-quickstart-rust.app"
           echo "✅ Package created: ${ZIP_NAME}"
 
       - name: Push to itch.io (macOS)

@@ -1,7 +1,7 @@
 # raylib-quickstart-zig Makefile
 # Build targets for raylib-quickstart-zig
 
-.PHONY: help build run clean test dmg dmg-x86 web serve upload upload-x86 upload-web
+.PHONY: help build run clean test app-bundle dmg dmg-x86 web serve upload upload-x86 upload-web
 
 # Application metadata
 APP_NAME = raylib-quickstart-zig
@@ -30,6 +30,7 @@ help:
 	@echo "  run            - Build and run the application"
 	@echo "  clean          - Remove built binaries and Zig build artifacts"
 	@echo "  test           - Run the application (same as run)"
+	@echo "  app-bundle     - Create macOS .app bundle (for zip / itch.io)"
 	@echo "  dmg            - Create macOS DMG package (Native)"
 	@echo "  dmg-x86        - Create macOS DMG package (Intel x86_64)"
 	@echo "  web            - Build for Web (WASM)"
@@ -63,6 +64,12 @@ clean:
 
 # Test target (same as run)
 test: run
+
+# .app bundle for Finder icon / itch.io (CI builds binary separately, then runs this)
+app-bundle:
+	@echo "==== Creating macOS .app bundle ===="
+	@if [ "$$(uname)" != "Darwin" ]; then echo "Error: app-bundle is only supported on macOS"; exit 1; fi
+	@bash scripts/make-app-bundle.sh zig-out/bin/$(APP_NAME)
 
 # Create macOS DMG package
 dmg:

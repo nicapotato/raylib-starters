@@ -1,7 +1,7 @@
 # raylib-quickstart-go Makefile
 # Build targets for raylib-quickstart-go
 
-.PHONY: help build run clean test dmg
+.PHONY: help build run clean test dmg app-bundle
 
 # Application metadata
 APP_NAME = raylib-quickstart-go
@@ -69,11 +69,11 @@ clean:
 # Test target (same as run)
 test: run
 
-# Create macOS DMG package
-dmg: build
-	@echo "==== Creating macOS DMG package ===="
+# .app bundle for Finder icon / itch.io (CI builds binary separately, then runs this)
+app-bundle:
+	@echo "==== Creating macOS .app bundle ===="
 	@if [ "$$(uname)" != "Darwin" ]; then \
-		echo "Error: DMG creation is only supported on macOS"; \
+		echo "Error: App bundle creation is only supported on macOS"; \
 		exit 1; \
 	fi
 	@if [ ! -f "$(BIN_DIR)/$(APP_NAME)" ]; then \
@@ -81,7 +81,6 @@ dmg: build
 		echo "Please build the project first with: make build"; \
 		exit 1; \
 	fi
-	@echo "Building DMG..."
 	@# Clean up any existing bundle
 	@rm -rf "$(APP_BUNDLE)"
 	@# Create bundle structure
@@ -156,6 +155,10 @@ dmg: build
 	fi
 	@echo '</dict>' >> "$(CONTENTS_DIR)/Info.plist"
 	@echo '</plist>' >> "$(CONTENTS_DIR)/Info.plist"
+	@echo "App bundle created: $(APP_BUNDLE)"
+
+dmg: build app-bundle
+	@echo "==== Creating macOS DMG package ===="
 	@# Clean up any existing DMG files
 	@rm -f "$(DMG_NAME)" "$(DMG_WRITABLE)"
 	@# Create writable DMG
