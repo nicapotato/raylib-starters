@@ -156,12 +156,12 @@ pub fn build(b: *std.Build) !void {
             \\echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' >> "$PLIST"
             \\echo '<plist version="1.0"><dict>' >> "$PLIST"
             \\echo "<key>CFBundleExecutable</key><string>$APP_NAME</string>" >> "$PLIST"
-            \\echo "<key>CFBundleIconFile</key><string>app-icon</string>" >> "$PLIST"
+            \\echo "<key>CFBundleIconFile</key><string>raylib</string>" >> "$PLIST"
             \\echo '</dict></plist>' >> "$PLIST"
             \\
             \\# Icon conversion (if exists)
-            \\if [ -f "resources/app-icon.ico" ]; then
-            \\    sips -s format icns "resources/app-icon.ico" --out "$APP_NAME.app/Contents/Resources/app-icon.icns" || true
+            \\if [ -f "resources/raylib.ico" ]; then
+            \\    sips -s format icns "resources/raylib.ico" --out "$APP_NAME.app/Contents/Resources/raylib.icns" || true
             \\fi
             \\
             \\hdiutil create -size 32m -fs HFS+ -volname "$VOL_NAME" "tmp.dmg"

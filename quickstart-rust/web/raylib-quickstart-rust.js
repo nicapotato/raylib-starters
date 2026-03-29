@@ -27,7 +27,7 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
 
 // --pre-jses are emitted after the Module integration code, so that they can
 // refer to Module (if they choose; they can also define Module)
-// include: /var/folders/wb/qw2d5rfj7p95jckpfvkk7xsr0000gn/T/tmpfgh14bnb.js
+// include: /var/folders/wb/qw2d5rfj7p95jckpfvkk7xsr0000gn/T/tmp6x33yirq.js
 
   Module['expectedDataFileDownloads'] ??= 0;
   Module['expectedDataFileDownloads']++;
@@ -204,25 +204,25 @@ Module['FS_createPath']("/", "resources", true, true);
     }
 
     }
-    loadPackage({"files": [{"filename": "/resources/app-icon.ico", "start": 0, "end": 25931}, {"filename": "/resources/crystal_cave_track.mp3", "start": 25931, "end": 410997, "audio": 1}, {"filename": "/resources/wabbit_alpha.png", "start": 410997, "end": 411493}], "remote_package_size": 411493});
+    loadPackage({"files": [{"filename": "/resources/crystal_cave_track.mp3", "start": 0, "end": 385066, "audio": 1}, {"filename": "/resources/raylib.ico", "start": 385066, "end": 490973}, {"filename": "/resources/wabbit_alpha.png", "start": 490973, "end": 491469}], "remote_package_size": 491469});
 
   })();
 
-// end include: /var/folders/wb/qw2d5rfj7p95jckpfvkk7xsr0000gn/T/tmpfgh14bnb.js
-// include: /var/folders/wb/qw2d5rfj7p95jckpfvkk7xsr0000gn/T/tmp0tj9mfrw.js
+// end include: /var/folders/wb/qw2d5rfj7p95jckpfvkk7xsr0000gn/T/tmp6x33yirq.js
+// include: /var/folders/wb/qw2d5rfj7p95jckpfvkk7xsr0000gn/T/tmpuiivd_f7.js
 
     // All the pre-js content up to here must remain later on, we need to run
     // it.
     if ((typeof ENVIRONMENT_IS_WASM_WORKER != 'undefined' && ENVIRONMENT_IS_WASM_WORKER) || (typeof ENVIRONMENT_IS_PTHREAD != 'undefined' && ENVIRONMENT_IS_PTHREAD) || (typeof ENVIRONMENT_IS_AUDIO_WORKLET != 'undefined' && ENVIRONMENT_IS_AUDIO_WORKLET)) Module['preRun'] = [];
     var necessaryPreJSTasks = Module['preRun'].slice();
-  // end include: /var/folders/wb/qw2d5rfj7p95jckpfvkk7xsr0000gn/T/tmp0tj9mfrw.js
-// include: /var/folders/wb/qw2d5rfj7p95jckpfvkk7xsr0000gn/T/tmp36_1o6cl.js
+  // end include: /var/folders/wb/qw2d5rfj7p95jckpfvkk7xsr0000gn/T/tmpuiivd_f7.js
+// include: /var/folders/wb/qw2d5rfj7p95jckpfvkk7xsr0000gn/T/tmppyuydm07.js
 
     if (!Module['preRun']) throw 'Module.preRun should exist because file support used it; did a pre-js delete it?';
     necessaryPreJSTasks.forEach((task) => {
       if (Module['preRun'].indexOf(task) < 0) throw 'All preRun tasks that exist before user pre-js code should remain after; did you replace Module or modify Module.preRun?';
     });
-  // end include: /var/folders/wb/qw2d5rfj7p95jckpfvkk7xsr0000gn/T/tmp36_1o6cl.js
+  // end include: /var/folders/wb/qw2d5rfj7p95jckpfvkk7xsr0000gn/T/tmppyuydm07.js
 
 
 var arguments_ = [];

@@ -38,7 +38,7 @@ if not exist "%RAYLIB_SRC%\libraylib.a" (
 )
 
 echo [3/5] Compiling resources...
-rem Include src directory so it finds icon.ico
+rem application.rc references ../resources/raylib.ico (-I src for rc includes)
 windres src/application.rc -o "%OBJ_DIR%\resources.o" -I src
 if errorlevel 1 (
     echo [WARNING] Failed to compile resources. Icon might be missing.

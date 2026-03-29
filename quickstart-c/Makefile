@@ -93,9 +93,9 @@ MACOS_DIR = $(CONTENTS_DIR)/MacOS
 RESOURCES_DIR = $(CONTENTS_DIR)/Resources
 DMG_NAME = $(APP_NAME).dmg
 DMG_WRITABLE = $(APP_NAME)_writeable.dmg
-ICON_ICO = resources/app-icon.ico
-ICON_ICNS = resources/app-icon.icns
-ICON_NAME = app-icon
+ICON_ICO = resources/raylib.ico
+ICON_ICNS = resources/raylib.icns
+ICON_NAME = raylib
 
 # Version from project.conf
 VERSION := $(shell grep '^VERSION=' project.conf | cut -d= -f2)
