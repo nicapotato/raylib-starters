@@ -38,9 +38,9 @@ env:
   ITCH_GAME: quickstart-c
   AWS_REGION: eu-west-2
   S3_CATEGORY: apps
-  S3_MATURITY: prototype
+  S3_MATURITY: quickstart
   S3_GAME_KEY: quickstart-c
-  S3_DISPLAY_NAME: 'Raylib quickstart (C prototype)'
+  S3_DISPLAY_NAME: 'Raylib quickstart (C)'
   S3_IFRAME_WIDTH: '800'
   S3_IFRAME_HEIGHT: '600'
   PUBLISH_ITCH: 'true'
@@ -419,4 +419,4 @@ jobs:
             | .apps[$game].maturity = $mat | .apps[$game].category = $cat' catalog.json > catalog.merged.json
 
           aws s3 cp catalog.merged.json "s3://${BUCKET}/${CATALOG_KEY}" --content-type application/json
-          echo "✅ Published prototype to s3://${BUCKET}/${PREFIX}/ and updated ${CATALOG_KEY}"
+          echo "✅ Published quickstart to s3://${BUCKET}/${PREFIX}/ and updated ${CATALOG_KEY}"

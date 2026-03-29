@@ -35,7 +35,7 @@ else
 	LDFLAGS += -llua
 endif
 
-.PHONY: all clean run setup_resources
+.PHONY: all clean run setup_resources bundle-macos-dylibs
 
 all: setup_resources $(TARGET)
 
@@ -56,4 +56,8 @@ run: $(TARGET)
 
 clean:
 	rm -f $(TARGET)
+
+# After `make`, copy Homebrew-linked dylibs next to the binary for itch.io / redistribution.
+bundle-macos-dylibs: $(TARGET)
+	python3 scripts/bundle-macos-dylibs.py ./$(TARGET)
 

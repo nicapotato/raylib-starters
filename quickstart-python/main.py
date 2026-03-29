@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 from pyray import *
 
+# Trigger
 
 def main():
     # Tell the window to use vsync and work on high DPI displays
