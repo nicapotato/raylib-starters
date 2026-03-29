@@ -242,7 +242,7 @@ jobs:
 
           mkdir -p release obj
 
-          windres src/application.rc -o obj/resources.o -I src || echo "Warning: Resource compilation failed"
+          windres src/application.rc -o obj/resources.o -I src -I . || echo "Warning: Resource compilation failed"
 
           OBJ_FILES=""
           if [ -f "obj/resources.o" ]; then
