@@ -151,26 +151,14 @@ jobs:
           
           echo "✅ macOS executable build complete"
 
-      - name: Package macOS build
+      - name: Package macOS build (.app for Finder icon)
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          echo "📦 Packaging macOS build..."
+          echo "📦 Creating .app bundle and zip..."
+          make app-bundle
           ZIP_NAME="raylib-quickstart-c-macos.zip"
           rm -f "${ZIP_NAME}"
-          
-          if [ -d "bin/Debug" ]; then
-            cd bin/Debug
-            zip -r "../../${ZIP_NAME}" .
-            cd ../..
-          elif [ -d "bin/Release" ]; then
-            cd bin/Release
-            zip -r "../../${ZIP_NAME}" .
-            cd ../..
-          else
-            echo "❌ Error: No build output directory found"
-            exit 1
-          fi
-          
+          zip -r "${ZIP_NAME}" "raylib-quickstart-c.app"
           echo "✅ Package created: ${ZIP_NAME}"
 
       - name: Push to itch.io (macOS)
@@ -184,7 +172,6 @@ jobs:
           version_override: ${{ steps.setup.outputs.version || github.event.inputs.version }}
           butler_api_key: ${{ secrets.BUTLER_API_KEY }}
           package_file: raylib-quickstart-c-macos.zip
-          package_source_dir: bin/Debug
           deployment_only: 'true'
           publish_itch: ${{ env.PUBLISH_ITCH }}
 
@@ -240,7 +227,7 @@ jobs:
           
           mkdir -p release obj
           
-          windres src/application.rc -o obj/resources.o -I src || echo "Warning: Resource compilation failed"
+          windres src/application.rc -o obj/resources.o -I src -I . || echo "Warning: Resource compilation failed"
           
           OBJ_FILES=""
           if [ -f "obj/resources.o" ]; then

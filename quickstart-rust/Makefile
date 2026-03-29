@@ -1,7 +1,7 @@
 # raylib-quickstart-rust Makefile
 # Build targets for raylib-quickstart-rust
 
-.PHONY: help build install run clean test dmg wasm serve-wasm clean-wasm
+.PHONY: help build install run clean test dmg app-bundle wasm serve-wasm clean-wasm
 
 # Application metadata
 APP_NAME = raylib-quickstart-rust
@@ -22,9 +22,9 @@ MACOS_DIR = $(CONTENTS_DIR)/MacOS
 RESOURCES_DIR = $(CONTENTS_DIR)/Resources
 DMG_NAME = $(APP_NAME).dmg
 DMG_WRITABLE = $(APP_NAME)_writeable.dmg
-ICON_ICO = resources/app-icon.ico
-ICON_ICNS = resources/app-icon.icns
-ICON_NAME = app-icon
+ICON_ICO = resources/raylib.ico
+ICON_ICNS = resources/raylib.icns
+ICON_NAME = raylib
 
 # WASM build configuration
 WASM_TARGET = wasm32-unknown-emscripten
@@ -99,11 +99,11 @@ clean:
 # Test target (same as run)
 test: run
 
-# Create macOS DMG package
-dmg: install
-	@echo "==== Creating macOS DMG package ===="
+# .app bundle for Finder icon / itch.io (CI builds binary separately, then runs this)
+app-bundle:
+	@echo "==== Creating macOS .app bundle ===="
 	@if [ "$$(uname)" != "Darwin" ]; then \
-		echo "Error: DMG creation is only supported on macOS"; \
+		echo "Error: App bundle creation is only supported on macOS"; \
 		exit 1; \
 	fi
 	@if [ ! -f "$(EXECUTABLE)" ]; then \
@@ -111,7 +111,6 @@ dmg: install
 		echo "Please build the project first with: make install"; \
 		exit 1; \
 	fi
-	@echo "Building DMG..."
 	@# Clean up any existing bundle
 	@rm -rf "$(APP_BUNDLE)"
 	@# Create bundle structure
@@ -186,6 +185,10 @@ dmg: install
 	fi
 	@echo '</dict>' >> "$(CONTENTS_DIR)/Info.plist"
 	@echo '</plist>' >> "$(CONTENTS_DIR)/Info.plist"
+	@echo "App bundle created: $(APP_BUNDLE)"
+
+dmg: install app-bundle
+	@echo "==== Creating macOS DMG package ===="
 	@# Clean up any existing DMG files
 	@rm -f "$(DMG_NAME)" "$(DMG_WRITABLE)"
 	@# Create writable DMG

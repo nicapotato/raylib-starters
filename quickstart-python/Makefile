@@ -36,6 +36,7 @@ install: check-uv
 run: install
 	@echo "Copying resources..."
 	@cp ../resources/crystal_cave_track.mp3 resources/
+	@cp ../resources/raylib.ico resources/
 	@echo "Running $(APP_NAME)..."
 	@uv run python $(MAIN_FILE)
 

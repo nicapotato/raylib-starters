@@ -1,5 +1,6 @@
 raylib-quickstart-lua
 *.o
 *.dSYM
-resources/
+resources/*
+!resources/raylib.ico
 external/

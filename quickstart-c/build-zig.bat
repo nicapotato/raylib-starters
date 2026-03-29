@@ -27,7 +27,7 @@ echo [2/4] Compiling resources...
 set "RSRC_OBJ="
 where windres >nul 2>nul
 if %errorlevel% equ 0 (
-    windres src/application.rc -o "%OBJ_DIR%\resources.o" -I src
+    windres src/application.rc -o "%OBJ_DIR%\resources.o" -I src -I .
     if exist "%OBJ_DIR%\resources.o" set "RSRC_OBJ=%OBJ_DIR%\resources.o"
 ) else (
     echo      windres not found. Skipping resources.

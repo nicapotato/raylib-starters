@@ -38,7 +38,7 @@ endif
 
 PROJECTS := quickstart-cpp raylib
 
-.PHONY: all clean help run dmg $(PROJECTS)
+.PHONY: all clean help run dmg app-bundle $(PROJECTS)
 
 all: $(PROJECTS)
 
@@ -90,9 +90,9 @@ MACOS_DIR = $(CONTENTS_DIR)/MacOS
 RESOURCES_DIR = $(CONTENTS_DIR)/Resources
 DMG_NAME = $(APP_NAME).dmg
 DMG_WRITABLE = $(APP_NAME)_writeable.dmg
-ICON_ICO = resources/app-icon.ico
-ICON_ICNS = resources/app-icon.icns
-ICON_NAME = app-icon
+ICON_ICO = resources/raylib.ico
+ICON_ICNS = resources/raylib.icns
+ICON_NAME = raylib
 
 # Version from project.conf
 VERSION := $(shell grep '^VERSION=' project.conf | cut -d= -f2)
@@ -101,14 +101,14 @@ ifeq ($(VERSION),)
 endif
 S3_BASE_PATH = s3://dev-nicapotato-user-content/games/quickstart-cpp/$(VERSION)/mac-arm64
 
-dmg: quickstart-cpp
-	@echo "==== Creating macOS DMG package ===="
+app-bundle:
+	@echo "==== Creating macOS .app bundle ===="
 	@if [ ! -f "$(EXECUTABLE)" ]; then \
 		echo "Error: Executable not found at $(EXECUTABLE)"; \
 		echo "Please build the project first with: make config=$(config)"; \
 		exit 1; \
 	fi
-	@echo "Building DMG from $(BUILD_CONFIG) configuration..."
+	@echo "Building app bundle from $(BUILD_CONFIG) configuration..."
 	@# Clean up any existing bundle
 	@rm -rf "$(APP_BUNDLE)"
 	@# Create bundle structure
@@ -216,6 +216,10 @@ dmg: quickstart-cpp
 	else \
 		echo "Note: Gatekeeper may block this app on other Macs without Developer ID signing"; \
 	fi
+	@echo "App bundle created: $(APP_BUNDLE)"
+
+dmg: quickstart-cpp app-bundle
+	@echo "==== Creating macOS DMG package ===="
 	@# Clean up any existing DMG files
 	@rm -f "$(DMG_NAME)" "$(DMG_WRITABLE)"
 	@# Create a temporary directory with app bundle and Applications symlink

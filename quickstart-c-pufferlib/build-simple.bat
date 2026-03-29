@@ -38,8 +38,8 @@ if not exist "%RAYLIB_SRC%\libraylib.a" (
 )
 
 echo [3/5] Compiling resources...
-rem Include src directory so it finds icon.ico
-windres src/application.rc -o "%OBJ_DIR%\resources.o" -I src
+rem Include project root so windres finds resources/raylib.ico
+windres src/application.rc -o "%OBJ_DIR%\resources.o" -I src -I .
 if errorlevel 1 (
     echo [WARNING] Failed to compile resources. Icon might be missing.
     rem Create empty resource object if failed to prevent link error if we keep it in gcc command? 

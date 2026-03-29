@@ -39,7 +39,7 @@ if not exist "%RAYLIB_SRC%\libraylib.a" (
 )
 
 echo [3/4] Compiling resources...
-windres src/application.rc -o "%OBJ_DIR%\resources.o" -I src
+windres src/application.rc -o "%OBJ_DIR%\resources.o" -I src -I .
 if errorlevel 1 (
     echo [WARNING] Failed to compile resources. Icon might be missing.
 )
