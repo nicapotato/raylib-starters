@@ -17,7 +17,8 @@ typedef enum {
     STATE_MENU,
     STATE_SHADER,
     STATE_ASEPRITE,
-    STATE_ASEPRITE_TAGGED
+    STATE_ASEPRITE_TAGGED,
+    STATE_ASEPRITE_VEHICLE
 } AppState;
 
 AppState currentState = STATE_MENU;
@@ -51,13 +52,21 @@ static AsepriteTag taggedBallTag = { 0 };
 static int taggedSelectedTagIndex = 0;
 static bool taggedTagBtnState[TAGGED_TAG_BTN_MAX];
 
+// Aseprite multi-tag preview (animated-vehicle.aseprite — 2 layers, tags: driving/drilling, idling, flying, down-drilling)
+static Aseprite vehicleAseprite = { 0 };
+static AsepriteTag vehicleTag = { 0 };
+static int vehicleSelectedTagIndex = 0;
+static bool vehicleTagBtnState[TAGGED_TAG_BTN_MAX];
+
 // Button logic
-Rectangle buttonBounds = { 50, 50, 200, 50 };
-Rectangle asepriteButtonBounds = { 50, 110, 200, 50 };
-Rectangle taggedAsepriteButtonBounds = { 50, 170, 280, 50 };
+Rectangle buttonBounds = { 50, 50, 288, 50 };
+Rectangle asepriteButtonBounds = { 50, 110, 288, 50 };
+Rectangle taggedAsepriteButtonBounds = { 50, 170, 403, 50 };
+Rectangle vehicleAsepriteButtonBounds = { 50, 230, 432, 50 };
 bool btnShaderState = false;
 bool btnAsepriteState = false;
 bool btnTaggedAsepriteState = false;
+bool btnVehicleAsepriteState = false;
 
 // Close button logic
 Rectangle closeButtonBounds; // Will be set in Update
@@ -90,6 +99,16 @@ static void InitTaggedBallAseprite(void) {
     taggedSelectedTagIndex = 0;
 }
 
+static void InitVehicleAseprite(void) {
+    vehicleAseprite = LoadAseprite("animated-vehicle.aseprite");
+    assert(IsAsepriteValid(vehicleAseprite));
+    int n = GetAsepriteTagCount(vehicleAseprite);
+    assert(n > 0 && n <= TAGGED_TAG_BTN_MAX);
+    vehicleTag = LoadAsepriteTagFromIndex(vehicleAseprite, 0);
+    assert(IsAsepriteTagValid(vehicleTag));
+    vehicleSelectedTagIndex = 0;
+}
+
 void InitApp() {
     // Set up resource directory
     SearchAndSetResourceDir("resources");
@@ -104,6 +123,7 @@ void InitApp() {
 
     InitBallAseprite();
     InitTaggedBallAseprite();
+    InitVehicleAseprite();
 
     // Load Shader
     #if defined(PLATFORM_WEB)
@@ -135,6 +155,7 @@ void UpdateMenu() {
     btnShaderState = false;
     btnAsepriteState = false;
     btnTaggedAsepriteState = false;
+    btnVehicleAsepriteState = false;
 
     if (CheckCollisionPointRec(mousePoint, buttonBounds)) {
         if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) btnShaderState = true;
@@ -154,6 +175,13 @@ void UpdateMenu() {
         if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) btnTaggedAsepriteState = true;
         if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
             currentState = STATE_ASEPRITE_TAGGED;
+        }
+    }
+
+    if (CheckCollisionPointRec(mousePoint, vehicleAsepriteButtonBounds)) {
+        if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) btnVehicleAsepriteState = true;
+        if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
+            currentState = STATE_ASEPRITE_VEHICLE;
         }
     }
 }
@@ -177,6 +205,10 @@ void DrawMenu() {
     DrawRectangleRec(taggedAsepriteButtonBounds, btnTaggedAsepriteState ? LIGHTGRAY : GRAY);
     DrawRectangleLines((int)taggedAsepriteButtonBounds.x, (int)taggedAsepriteButtonBounds.y, (int)taggedAsepriteButtonBounds.width, (int)taggedAsepriteButtonBounds.height, BLACK);
     DrawText("Aseprite: tagged ball (multi)", (int)taggedAsepriteButtonBounds.x + 10, (int)taggedAsepriteButtonBounds.y + 15, 20, BLACK);
+
+    DrawRectangleRec(vehicleAsepriteButtonBounds, btnVehicleAsepriteState ? LIGHTGRAY : GRAY);
+    DrawRectangleLines((int)vehicleAsepriteButtonBounds.x, (int)vehicleAsepriteButtonBounds.y, (int)vehicleAsepriteButtonBounds.width, (int)vehicleAsepriteButtonBounds.height, BLACK);
+    DrawText("Aseprite: animated vehicle (multi-tag)", (int)vehicleAsepriteButtonBounds.x + 10, (int)vehicleAsepriteButtonBounds.y + 15, 20, BLACK);
 
     DrawText("Main Menu - quickstart-c-aesprite", 10, 10, 20, DARKGRAY);
 }
@@ -291,7 +323,7 @@ static void TaggedGetTagButtonLayout(int sw, int sh, int tagCount, float* outBtn
     const float pad = 16.0f;
     const float btnH = 44.0f;
     const float gap = 10.0f;
-    float btnW = 200.0f;
+    float btnW = 288.0f;
     *outBtnH = btnH;
     if (tagCount <= 0) {
         *outBtnW = 0.0f;
@@ -302,8 +334,8 @@ static void TaggedGetTagButtonLayout(int sw, int sh, int tagCount, float* outBtn
     float rowW = (float)tagCount * btnW + (float)(tagCount - 1) * gap;
     if (rowW > (float)sw - 2.0f * pad) {
         btnW = ((float)sw - 2.0f * pad - (float)(tagCount - 1) * gap) / (float)tagCount;
-        if (btnW < 72.0f) {
-            btnW = 72.0f;
+        if (btnW < 103.0f) {
+            btnW = 103.0f;
         }
         rowW = (float)tagCount * btnW + (float)(tagCount - 1) * gap;
     }
@@ -398,6 +430,92 @@ static void DrawTaggedAsepriteView(void) {
     DrawText("raylib-aseprite (RobLoach)", 10, sh - 30, 18, LIGHTGRAY);
 }
 
+static void UpdateVehicleAsepriteView(void) {
+    assert(IsAsepriteTagValid(vehicleTag));
+    UpdateAsepriteTag(&vehicleTag);
+
+    closeButtonBounds = (Rectangle){ (float)GetScreenWidth() - 40, 10, 30, 30 };
+    Vector2 mousePoint = GetMousePosition();
+    closeBtnState = false;
+
+    if (CheckCollisionPointRec(mousePoint, closeButtonBounds)) {
+        if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) closeBtnState = true;
+        if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
+            currentState = STATE_MENU;
+        }
+    }
+
+    int tagCount = GetAsepriteTagCount(vehicleAseprite);
+    assert(tagCount > 0 && tagCount <= TAGGED_TAG_BTN_MAX);
+    float btnW, startX, btnY, btnH;
+    TaggedGetTagButtonLayout(GetScreenWidth(), GetScreenHeight(), tagCount, &btnW, &startX, &btnY, &btnH);
+
+    for (int i = 0; i < tagCount; i++) {
+        vehicleTagBtnState[i] = false;
+    }
+
+    for (int i = 0; i < tagCount; i++) {
+        Rectangle r = { startX + (float)i * (btnW + 10.0f), btnY, btnW, btnH };
+        if (CheckCollisionPointRec(mousePoint, r)) {
+            if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) vehicleTagBtnState[i] = true;
+            if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON) && i != vehicleSelectedTagIndex) {
+                vehicleTag = LoadAsepriteTagFromIndex(vehicleAseprite, i);
+                assert(IsAsepriteTagValid(vehicleTag));
+                vehicleSelectedTagIndex = i;
+            }
+        }
+    }
+}
+
+static void DrawVehicleAsepriteView(void) {
+    ClearBackground((Color){ 18, 22, 28, 255 });
+
+    int sw = GetScreenWidth();
+    int sh = GetScreenHeight();
+    float scale = 4.0f;
+
+    float fw = (float)GetAsepriteWidth(vehicleAseprite);
+    float fh = (float)GetAsepriteHeight(vehicleAseprite);
+    Vector2 pos = {
+        (float)sw * 0.5f - (fw * scale) * 0.5f,
+        (float)sh * 0.5f - (fh * scale) * 0.5f - 24.0f
+    };
+    DrawAsepriteTagEx(vehicleTag, pos, 0.0f, scale, WHITE);
+
+    DrawRectangleRec(closeButtonBounds, closeBtnState ? RED : MAROON);
+    DrawText("X", (int)closeButtonBounds.x + 8, (int)closeButtonBounds.y + 5, 20, WHITE);
+
+    DrawText("Aseprite — animated-vehicle.aseprite (2 layers)", 10, 10, 18, RAYWHITE);
+
+    int tagCount = GetAsepriteTagCount(vehicleAseprite);
+    assert(vehicleTag.tag != NULL);
+    int framesInTag = vehicleTag.tag->to_frame - vehicleTag.tag->from_frame + 1;
+    DrawText(TextFormat("Active tag: %s  (%i frames)", vehicleTag.name ? vehicleTag.name : "?", framesInTag), 10, 34, 18, LIGHTGRAY);
+    DrawText(TextFormat("%i tags — click below to switch", tagCount), 10, 56, 16, (Color){ 140, 160, 180, 255 });
+
+    float btnW, startX, btnY, btnH;
+    TaggedGetTagButtonLayout(sw, sh, tagCount, &btnW, &startX, &btnY, &btnH);
+
+    for (int i = 0; i < tagCount; i++) {
+        Rectangle r = { startX + (float)i * (btnW + 10.0f), btnY, btnW, btnH };
+        bool sel = (i == vehicleSelectedTagIndex);
+        DrawRectangleRec(r, vehicleTagBtnState[i] ? (Color){ 110, 95, 75, 255 } : (sel ? (Color){ 85, 75, 60, 255 } : (Color){ 50, 48, 44, 255 }));
+        DrawRectangleLines((int)r.x, (int)r.y, (int)r.width, (int)r.height, sel ? GOLD : (Color){ 95, 90, 82, 255 });
+        const char* nm = vehicleAseprite.ase->tags[i].name;
+        const char* disp = nm ? nm : "?";
+        int fs = 18;
+        if (MeasureText(disp, fs) > (int)r.width - 8) {
+            fs = 14;
+        }
+        int tw = MeasureText(disp, fs);
+        int tx = (int)(r.x + (r.width - (float)tw) * 0.5f);
+        int ty = (int)(r.y + (r.height - (float)fs) * 0.5f);
+        DrawText(disp, tx, ty, fs, RAYWHITE);
+    }
+
+    DrawText("raylib-aseprite (RobLoach)", 10, sh - 30, 18, LIGHTGRAY);
+}
+
 int main(void)
 {
     SetConfigFlags(FLAG_VSYNC_HINT | FLAG_WINDOW_HIGHDPI);
@@ -415,6 +533,7 @@ int main(void)
             case STATE_SHADER: UpdateShader(); break;
             case STATE_ASEPRITE: UpdateAsepriteView(); break;
             case STATE_ASEPRITE_TAGGED: UpdateTaggedAsepriteView(); break;
+            case STATE_ASEPRITE_VEHICLE: UpdateVehicleAsepriteView(); break;
         }
 
         BeginDrawing();
@@ -423,6 +542,7 @@ int main(void)
                 case STATE_SHADER: DrawShader(); break;
                 case STATE_ASEPRITE: DrawAsepriteView(); break;
                 case STATE_ASEPRITE_TAGGED: DrawTaggedAsepriteView(); break;
+                case STATE_ASEPRITE_VEHICLE: DrawVehicleAsepriteView(); break;
             }
         EndDrawing();
     }
@@ -434,6 +554,7 @@ int main(void)
     UnloadShader(shader);
     UnloadAseprite(ballAseprite);
     UnloadAseprite(taggedBallAseprite);
+    UnloadAseprite(vehicleAseprite);
     CloseAudioDevice();
     CloseWindow();
     return 0;
