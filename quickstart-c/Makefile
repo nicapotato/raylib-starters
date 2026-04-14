@@ -41,7 +41,9 @@ endif
 
 PROJECTS := raylib-quickstart raylib
 
-.PHONY: all clean help run dmg app-bundle $(PROJECTS)
+SMOKE_SECONDS ?= 3
+
+.PHONY: all clean help run run-smoke dmg app-bundle $(PROJECTS)
 
 all: $(PROJECTS)
 
@@ -102,7 +104,8 @@ VERSION := $(shell grep '^VERSION=' project.conf | cut -d= -f2)
 ifeq ($(VERSION),)
   VERSION := latest
 endif
-S3_BASE_PATH = s3://prod-nicapotato-public-software/apps/quickstart/quickstart-c/$(VERSION)/mac-arm64
+# CI uploads per-arch zips to S3 under apps/quickstart/quickstart-c/<VERSION>/
+S3_BASE_PATH = s3://prod-nicapotato-public-software/apps/quickstart/quickstart-c/$(VERSION)/
 
 # .app bundle for Finder icon / itch.io (CI builds binary separately, then runs this)
 app-bundle:
@@ -291,6 +294,20 @@ run: raylib-quickstart
 	@EXEC_DIR="$(shell dirname $(EXECUTABLE))"; \
 	cd "$$EXEC_DIR" && ./$(APP_NAME)
 
+# Run binary for SMOKE_SECONDS (matches CI smoke). Requires a built Premake binary.
+run-smoke: raylib-quickstart
+	@echo "==== Smoke $(SMOKE_SECONDS)s (local) ===="
+	@if [ ! -f "$(EXECUTABLE)" ]; then \
+		echo "Error: Executable not found at $(EXECUTABLE)"; \
+		exit 1; \
+	fi
+	@if [ -d "resources" ]; then \
+		mkdir -p "$(shell dirname $(EXECUTABLE))/resources"; \
+		cp -r resources/* "$(shell dirname $(EXECUTABLE))/resources/"; \
+	fi
+	@EXEC_DIR="$(shell dirname $(EXECUTABLE))"; \
+	cd "$$EXEC_DIR" && python3 "$(CURDIR)/ci/smoke_run.py" $(SMOKE_SECONDS) "./$(APP_NAME)"
+
 help:
 	@echo "Usage: make [config=name] [target]"
 	@echo ""
@@ -308,6 +325,7 @@ help:
 	@echo "   raylib-quickstart"
 	@echo "   raylib"
 	@echo "   run              - Build and run the application"
+	@echo "   run-smoke        - Run binary for SMOKE_SECONDS (default 3s); same idea as CI"
 	@echo "   dmg              - Create macOS DMG package (macOS only)"
 	@echo ""
 	@echo "For more information, see https://github.com/premake/premake-core/wiki"

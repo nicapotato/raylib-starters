@@ -1,0 +1,16 @@
+# Badge + manual dispatch for WASM only (delegates to quickstart-c.yml).
+name: quickstart-c WASM
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  run:
+    uses: ./.github/workflows/quickstart-c.yml
+    with:
+      build_platform: web
+    secrets: inherit
