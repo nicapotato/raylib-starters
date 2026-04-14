@@ -1,0 +1,44 @@
+# raylib-starters
+
+Templates and CI for small [raylib](https://www.raylib.com/) projects.
+
+## Quickstart C — CI/CD
+
+The sample project lives under [`quickstart-c/`](quickstart-c/). Builds are **manual** (`workflow_dispatch` only): run from the Actions tab or with the GitHub CLI.
+
+### Full release (all targets, S3 catalog, itch)
+
+- Workflow: [`quickstart-c.yml`](.github/workflows/quickstart-c.yml)
+- Badge: [![Quickstart C full](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c.yml/badge.svg)](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c.yml)
+
+```bash
+gh workflow run quickstart-c.yml --ref "$(git branch --show-current)" -f build_platform=all
+# or, from this repo with GNU make:
+make -f makefile-cicd.mk ga-quickstart-c-all
+```
+
+### Per-target builds (one badge per project / platform / CPU)
+
+Wrapper workflows live under [`.github/workflows/quickstart-c/`](.github/workflows/quickstart-c/) (the main reusable workflow stays at [`.github/workflows/quickstart-c.yml`](.github/workflows/quickstart-c.yml) because GitHub does not allow `workflow_call` in subfolders). Each row is a **separate** workflow file so the GitHub status badge reflects **that** build only.
+
+| Project | Platform | CPU / arch | Status |
+|--------|----------|------------|--------|
+| quickstart-c | Web | WASM | [![WASM](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c%2Fquickstart-c-web.yml/badge.svg)](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c%2Fquickstart-c-web.yml) |
+| quickstart-c | macOS | arm64 | [![macOS arm64](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c%2Fquickstart-c-macos-arm64.yml/badge.svg)](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c%2Fquickstart-c-macos-arm64.yml) |
+| quickstart-c | macOS | x86_64 | [![macOS x86_64](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c%2Fquickstart-c-macos-x86_64.yml/badge.svg)](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c%2Fquickstart-c-macos-x86_64.yml) |
+| quickstart-c | Linux | x86_64 | [![Linux x86_64](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c%2Fquickstart-c-linux-x86_64.yml/badge.svg)](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c%2Fquickstart-c-linux-x86_64.yml) |
+| quickstart-c | Linux | arm64 | [![Linux arm64](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c%2Fquickstart-c-linux-arm64.yml/badge.svg)](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c%2Fquickstart-c-linux-arm64.yml) |
+| quickstart-c | Windows | x86_64 | [![Windows x86_64](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c%2Fquickstart-c-windows-x86_64.yml/badge.svg)](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c%2Fquickstart-c-windows-x86_64.yml) |
+| quickstart-c | Windows | arm64 | [![Windows arm64](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c%2Fquickstart-c-windows-arm64.yml/badge.svg)](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c%2Fquickstart-c-windows-arm64.yml) |
+
+Thin workflows call the same implementation ([`quickstart-c.yml`](.github/workflows/quickstart-c.yml)) with the matching `build_platform` input. Example:
+
+```bash
+gh workflow run quickstart-c/quickstart-c-linux-arm64.yml --ref "$(git branch --show-current)"
+```
+
+Optional inputs (`channel`, `version`) are passed through when you run **`quickstart-c.yml`** directly:
+
+```bash
+make -f makefile-cicd.mk ga-quickstart-c GA_BUILD_PLATFORM=web GA_CHANNEL=web
+```

@@ -4,15 +4,22 @@ on:
   workflow_dispatch:
     inputs:
       build_platform:
-        description: 'Platform to build'
+        description: 'Build target (use "all" for full release, S3 catalog, and itch desktop)'
         required: false
         default: 'all'
         type: choice
         options:
+          - all
           - web
           - macos
+          - macos-arm64
+          - macos-x86_64
+          - linux
+          - linux-x86_64
+          - linux-arm64
           - windows
-          - all
+          - windows-x86_64
+          - windows-arm64
       channel:
         description: 'itch.io channel name (e.g., web, macos, osx)'
         required: false
@@ -23,10 +30,19 @@ on:
         required: false
         default: ''
         type: string
-  pull_request:
-    types: [opened, synchronize, reopened]
-    paths:
-      - 'quickstart-c/**'
+  workflow_call:
+    inputs:
+      build_platform:
+        required: true
+        type: string
+      channel:
+        required: false
+        type: string
+        default: ''
+      version:
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -59,9 +75,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     if: >-
-      github.event_name != 'workflow_dispatch' ||
-      github.event.inputs.build_platform == 'web' ||
-      github.event.inputs.build_platform == 'all'
+      contains(fromJSON('["web","all"]'), inputs.build_platform)
     outputs:
       version: ${{ steps.web_build.outputs.version }}
 
@@ -82,10 +96,10 @@ jobs:
           itch_user: ${{ env.ITCH_USER }}
           itch_game: ${{ env.ITCH_GAME }}
           build_platform: web
-          channel: ${{ github.event.inputs.channel || 'web' }}
-          version_override: ${{ github.event.inputs.version }}
+          channel: ${{ inputs.channel != '' && inputs.channel || 'web' }}
+          version_override: ${{ inputs.version }}
           butler_api_key: ${{ secrets.BUTLER_API_KEY }}
-          publish_itch: ${{ env.PUBLISH_ITCH }}
+          publish_itch: ${{ env.PUBLISH_ITCH == 'true' }}
 
       - name: Upload WASM zip artifact (S3 publish)
         if: env.PUBLISH_S3 == 'true'
@@ -103,13 +117,11 @@ jobs:
           path: ${{ env.PROJECT_DIR }}/bin/wasm/
           if-no-files-found: error
 
-  build-and-push-macos:
+  build-macos-arm64:
     runs-on: macos-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     if: >-
-      github.event_name != 'workflow_dispatch' ||
-      github.event.inputs.build_platform == 'macos' ||
-      github.event.inputs.build_platform == 'all'
+      contains(fromJSON('["macos","macos-arm64","all"]'), inputs.build_platform)
     outputs:
       version: ${{ steps.setup.outputs.version }}
 
@@ -117,7 +129,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup and build project
+      - name: Setup (Raylib clone, version)
         uses: ./.github/actions/build-c-project
         id: setup
         with:
@@ -125,71 +137,48 @@ jobs:
           itch_user: ${{ env.ITCH_USER }}
           itch_game: ${{ env.ITCH_GAME }}
           build_platform: macos
-          channel: ${{ github.event.inputs.channel || 'osx' }}
-          version_override: ${{ github.event.inputs.version }}
+          channel: ${{ inputs.channel != '' && inputs.channel || 'osx' }}
+          version_override: ${{ inputs.version }}
           butler_api_key: ${{ secrets.BUTLER_API_KEY }}
           skip_project_build: 'true'
-          publish_itch: ${{ env.PUBLISH_ITCH }}
+          publish_itch: 'false'
 
-      - name: Build macOS executable
+      - name: Build Raylib + app (arm64), smoke, zip
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          echo "🔨 Building macOS executable..."
+          set -euo pipefail
+          echo "🔨 Raylib + app arm64..."
+          cd raylib/src
+          make clean || true
+          make PLATFORM=PLATFORM_DESKTOP -j4
+          cd ../..
           mkdir -p bin/Debug
-          
-          clang src/main.c \
-            -o bin/Debug/raylib-quickstart-c \
-            -O2 -std=c99 \
+          clang src/main.c -o bin/Debug/raylib-quickstart-c -O2 -std=c99 \
             -I include -I raylib/src -I raylib/src/external \
             -L raylib/src -lraylib \
             -framework Cocoa -framework IOKit -framework OpenGL \
             -arch arm64
-          
-          if [ -d "resources" ]; then
-            cp -r resources bin/Debug/
-          fi
-          
-          echo "✅ macOS executable build complete"
-
-      - name: Package macOS build (.app for Finder icon)
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          echo "📦 Creating .app bundle and zip..."
+          if [ -d "resources" ]; then cp -r resources bin/Debug/; fi
+          echo "🧪 Smoke arm64 (3s)..."
+          python3 ci/smoke_run.py 3 bin/Debug/raylib-quickstart-c
           make app-bundle
-          ZIP_NAME="raylib-quickstart-c-macos.zip"
-          rm -f "${ZIP_NAME}"
-          zip -r "${ZIP_NAME}" "raylib-quickstart-c.app"
-          echo "✅ Package created: ${ZIP_NAME}"
+          rm -f raylib-quickstart-c-macos-arm64.zip
+          zip -r raylib-quickstart-c-macos-arm64.zip raylib-quickstart-c.app
+          rm -rf raylib-quickstart-c.app
 
-      - name: Push to itch.io (macOS)
-        uses: ./.github/actions/build-c-project
-        with:
-          project_dir: ${{ env.PROJECT_DIR }}
-          itch_user: ${{ env.ITCH_USER }}
-          itch_game: ${{ env.ITCH_GAME }}
-          build_platform: macos
-          channel: ${{ github.event.inputs.channel || 'osx' }}
-          version_override: ${{ steps.setup.outputs.version || github.event.inputs.version }}
-          butler_api_key: ${{ secrets.BUTLER_API_KEY }}
-          package_file: raylib-quickstart-c-macos.zip
-          deployment_only: 'true'
-          publish_itch: ${{ env.PUBLISH_ITCH }}
-
-      - name: Upload macOS zip artifact (S3 publish)
+      - name: Upload macOS arm64 zip artifact
         if: env.PUBLISH_S3 == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: quickstart-c-macos-zip
-          path: ${{ env.PROJECT_DIR }}/raylib-quickstart-c-macos.zip
+          name: quickstart-c-macos-arm64-zip
+          path: ${{ env.PROJECT_DIR }}/raylib-quickstart-c-macos-arm64.zip
           if-no-files-found: error
 
-  build-and-push-windows:
-    runs-on: windows-latest
-    timeout-minutes: 45
+  build-macos-x86_64:
+    runs-on: macos-latest
+    timeout-minutes: 60
     if: >-
-      github.event_name != 'workflow_dispatch' ||
-      github.event.inputs.build_platform == 'windows' ||
-      github.event.inputs.build_platform == 'all'
+      contains(fromJSON('["macos","macos-x86_64","all"]'), inputs.build_platform)
     outputs:
       version: ${{ steps.setup.outputs.version }}
 
@@ -197,13 +186,179 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup (Raylib clone, version)
+        uses: ./.github/actions/build-c-project
+        id: setup
+        with:
+          project_dir: ${{ env.PROJECT_DIR }}
+          itch_user: ${{ env.ITCH_USER }}
+          itch_game: ${{ env.ITCH_GAME }}
+          build_platform: macos
+          channel: ${{ inputs.channel != '' && inputs.channel || 'osx' }}
+          version_override: ${{ inputs.version }}
+          butler_api_key: ${{ secrets.BUTLER_API_KEY }}
+          skip_project_build: 'true'
+          publish_itch: 'false'
+
+      - name: Build Raylib + app (x86_64), smoke, zip
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -euo pipefail
+          echo "🔨 Raylib + app x86_64 (Rosetta)..."
+          cd raylib/src
+          make clean
+          rm -f libraylib.a
+          arch -x86_64 make PLATFORM=PLATFORM_DESKTOP -j4
+          cd ../..
+          mkdir -p bin/Debug
+          clang src/main.c -o bin/Debug/raylib-quickstart-c -O2 -std=c99 \
+            -I include -I raylib/src -I raylib/src/external \
+            -L raylib/src -lraylib \
+            -framework Cocoa -framework IOKit -framework OpenGL \
+            -arch x86_64
+          if [ -d "resources" ]; then cp -r resources bin/Debug/; fi
+          echo "🧪 Smoke x86_64 (3s)..."
+          arch -x86_64 python3 ci/smoke_run.py 3 bin/Debug/raylib-quickstart-c
+          make app-bundle
+          rm -f raylib-quickstart-c-macos-x86_64.zip
+          zip -r raylib-quickstart-c-macos-x86_64.zip raylib-quickstart-c.app
+
+      - name: Upload macOS x86_64 zip artifact
+        if: env.PUBLISH_S3 == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: quickstart-c-macos-x86_64-zip
+          path: ${{ env.PROJECT_DIR }}/raylib-quickstart-c-macos-x86_64.zip
+          if-no-files-found: error
+
+  build-linux-x64:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    if: >-
+      contains(fromJSON('["linux","linux-x86_64","all"]'), inputs.build_platform)
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libasound2-dev libx11-dev libxrandr-dev \
+            libxi-dev libxcursor-dev libgl1-mesa-dev libglu1-mesa-dev xvfb python3
+
+      - name: Version
+        id: version
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          if [ -f project.conf ]; then V=$(grep '^VERSION=' project.conf | cut -d= -f2); else V=latest; fi
+          echo "version=${V:-latest}" >> "$GITHUB_OUTPUT"
+
+      - name: Clone Raylib + build
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/raysan5/raylib.git
+          cd raylib/src
+          make PLATFORM=PLATFORM_DESKTOP RAYLIB_LIBTYPE=STATIC -j4
+          cd ../..
+          gcc src/main.c -o raylib-quickstart-c -O2 -std=c99 \
+            -I include -I raylib/src -I raylib/src/external \
+            -L raylib/src -lraylib -lGL -lm -lpthread -ldl -lrt \
+            -lX11 -lXrandr -lXi -lXcursor -lasound
+          mkdir -p release
+          mv raylib-quickstart-c release/
+          if [ -d resources ]; then cp -r resources release/; fi
+
+      - name: Smoke (3s, xvfb)
+        working-directory: ${{ env.PROJECT_DIR }}/release
+        run: xvfb-run -a python3 ../ci/smoke_run.py 3 ./raylib-quickstart-c
+
+      - name: Zip
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          rm -f raylib-quickstart-c-linux-x86_64.zip
+          zip -r raylib-quickstart-c-linux-x86_64.zip release
+
+      - name: Upload artifact
+        if: env.PUBLISH_S3 == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: quickstart-c-linux-x86_64-zip
+          path: ${{ env.PROJECT_DIR }}/raylib-quickstart-c-linux-x86_64.zip
+          if-no-files-found: error
+
+  build-linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    if: >-
+      contains(fromJSON('["linux","linux-arm64","all"]'), inputs.build_platform)
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libasound2-dev libx11-dev libxrandr-dev \
+            libxi-dev libxcursor-dev libgl1-mesa-dev libglu1-mesa-dev xvfb python3
+
+      - name: Version
+        id: version
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          if [ -f project.conf ]; then V=$(grep '^VERSION=' project.conf | cut -d= -f2); else V=latest; fi
+          echo "version=${V:-latest}" >> "$GITHUB_OUTPUT"
+
+      - name: Clone Raylib + build
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/raysan5/raylib.git
+          cd raylib/src
+          make PLATFORM=PLATFORM_DESKTOP RAYLIB_LIBTYPE=STATIC -j4
+          cd ../..
+          gcc src/main.c -o raylib-quickstart-c -O2 -std=c99 \
+            -I include -I raylib/src -I raylib/src/external \
+            -L raylib/src -lraylib -lGL -lm -lpthread -ldl -lrt \
+            -lX11 -lXrandr -lXi -lXcursor -lasound
+          mkdir -p release
+          mv raylib-quickstart-c release/
+          if [ -d resources ]; then cp -r resources release/; fi
+
+      - name: Smoke (3s, xvfb)
+        working-directory: ${{ env.PROJECT_DIR }}/release
+        run: xvfb-run -a python3 ../ci/smoke_run.py 3 ./raylib-quickstart-c
+
+      - name: Zip
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          rm -f raylib-quickstart-c-linux-arm64.zip
+          zip -r raylib-quickstart-c-linux-arm64.zip release
+
+      - name: Upload artifact
+        if: env.PUBLISH_S3 == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: quickstart-c-linux-arm64-zip
+          path: ${{ env.PROJECT_DIR }}/raylib-quickstart-c-linux-arm64.zip
+          if-no-files-found: error
+
+  build-windows-x64:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    if: >-
+      contains(fromJSON('["windows","windows-x86_64","all"]'), inputs.build_platform)
+    outputs:
+      version: ${{ steps.setup.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
       - name: Install MinGW
         run: |
-          echo "📦 Installing MinGW..."
           choco install mingw -y
-          $env:PATH += ";C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin"
           echo "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          echo "✅ MinGW installed"
 
       - name: Setup Raylib
         uses: ./.github/actions/build-c-project
@@ -213,92 +368,177 @@ jobs:
           itch_user: ${{ env.ITCH_USER }}
           itch_game: ${{ env.ITCH_GAME }}
           build_platform: windows
-          channel: ${{ github.event.inputs.channel || 'windows' }}
-          version_override: ${{ github.event.inputs.version }}
+          channel: ${{ inputs.channel != '' && inputs.channel || 'windows' }}
+          version_override: ${{ inputs.version }}
           butler_api_key: ${{ secrets.BUTLER_API_KEY }}
           skip_project_build: 'true'
-          publish_itch: ${{ env.PUBLISH_ITCH }}
+          publish_itch: 'false'
 
-      - name: Build Windows executable
+      - name: Build + smoke + zip
         working-directory: ${{ env.PROJECT_DIR }}
         shell: bash
         run: |
-          echo "🔨 Building Windows executable..."
-          
+          set -euo pipefail
           mkdir -p release obj
-          
-          windres src/application.rc -o obj/resources.o -I src -I . || echo "Warning: Resource compilation failed"
-          
+          windres src/application.rc -o obj/resources.o -I src -I . || true
           OBJ_FILES=""
-          if [ -f "obj/resources.o" ]; then
-            OBJ_FILES="obj/resources.o"
-          fi
-          
+          if [ -f "obj/resources.o" ]; then OBJ_FILES="obj/resources.o"; fi
           if [ -n "$OBJ_FILES" ]; then
             gcc src/main.c $OBJ_FILES -o release/raylib-quickstart-c.exe -O2 -I include -I raylib/src -L raylib/src -lraylib -lgdi32 -lwinmm -static
           else
             gcc src/main.c -o release/raylib-quickstart-c.exe -O2 -I include -I raylib/src -L raylib/src -lraylib -lgdi32 -lwinmm -static
           fi
-          
-          if [ -d "resources" ]; then
-            cp -r resources release/resources || true
-          fi
-          
-          echo "✅ Windows build complete"
+          if [ -d "resources" ]; then cp -r resources release/resources || true; fi
+          echo "Smoke x64 (3s)..."
+          cd release
+          python ../ci/smoke_run.py 3 ./raylib-quickstart-c.exe
+          cd ..
+          rm -f raylib-quickstart-c-windows-x86_64.zip
+          powershell -Command "Compress-Archive -Path 'release\\*' -DestinationPath 'raylib-quickstart-c-windows-x86_64.zip' -Force"
 
-      - name: Package Windows build
-        working-directory: ${{ env.PROJECT_DIR }}
-        shell: pwsh
-        run: |
-          echo "📦 Packaging Windows build..."
-          $ZIP_NAME = "raylib-quickstart-c-windows.zip"
-          
-          if (Test-Path "release") {
-            $SOURCE_DIR = "release"
-          } elseif (Test-Path "bin\Release") {
-            $SOURCE_DIR = "bin\Release"
-          } elseif (Test-Path "bin\Debug") {
-            $SOURCE_DIR = "bin\Debug"
-          } else {
-            Write-Host "❌ Error: No build output directory found"
-            exit 1
-          }
-          
-          Compress-Archive -Path "${SOURCE_DIR}\*" -DestinationPath $ZIP_NAME -Force
-          echo "✅ Package created: $ZIP_NAME"
-
-      - name: Push to itch.io (Windows)
-        uses: ./.github/actions/build-c-project
-        with:
-          project_dir: ${{ env.PROJECT_DIR }}
-          itch_user: ${{ env.ITCH_USER }}
-          itch_game: ${{ env.ITCH_GAME }}
-          build_platform: windows
-          channel: ${{ github.event.inputs.channel || 'windows' }}
-          version_override: ${{ steps.setup.outputs.version || github.event.inputs.version }}
-          butler_api_key: ${{ secrets.BUTLER_API_KEY }}
-          package_file: raylib-quickstart-c-windows.zip
-          package_source_dir: release
-          deployment_only: 'true'
-          publish_itch: ${{ env.PUBLISH_ITCH }}
-
-      - name: Upload Windows zip artifact (S3 publish)
+      - name: Upload artifact
         if: env.PUBLISH_S3 == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: quickstart-c-windows-zip
-          path: ${{ env.PROJECT_DIR }}/raylib-quickstart-c-windows.zip
+          name: quickstart-c-windows-x86_64-zip
+          path: ${{ env.PROJECT_DIR }}/raylib-quickstart-c-windows-x86_64.zip
           if-no-files-found: error
+
+  build-windows-arm64:
+    runs-on: windows-11-arm
+    timeout-minutes: 60
+    if: >-
+      contains(fromJSON('["windows","windows-arm64","all"]'), inputs.build_platform)
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version
+        id: version
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: bash
+        run: |
+          if [ -f project.conf ]; then V=$(grep '^VERSION=' project.conf | cut -d= -f2); else V=latest; fi
+          echo "version=${V:-latest}" >> "$GITHUB_OUTPUT"
+
+      - name: Install llvm-mingw (aarch64) + build Raylib + app
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = '20241119'
+          $folder = "llvm-mingw-${tag}-ucrt-aarch64"
+          $url = "https://github.com/mstorsjo/llvm-mingw/releases/download/${tag}/${folder}.zip"
+          $zip = "$env:TEMP\llvm-mingw-aarch64.zip"
+          Invoke-WebRequest -Uri $url -OutFile $zip
+          $dest = "C:\$folder"
+          if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
+          Expand-Archive -Path $zip -DestinationPath 'C:\' -Force
+          $mingwBin = Join-Path $dest 'bin'
+          if (-not (Test-Path (Join-Path $mingwBin 'aarch64-w64-mingw32-gcc.exe'))) {
+            throw "aarch64-w64-mingw32-gcc not found under $mingwBin"
+          }
+          $env:PATH = "$mingwBin;$env:PATH"
+          echo "$mingwBin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          $make = Join-Path $mingwBin 'mingw32-make.exe'
+          git clone --depth 1 https://github.com/raysan5/raylib.git
+          Set-Location raylib\src
+          $env:CC = 'aarch64-w64-mingw32-gcc'
+          $env:AR = 'aarch64-w64-mingw32-ar'
+          & $make PLATFORM=PLATFORM_DESKTOP RAYLIB_LIBTYPE=STATIC -j4
+          Set-Location ..\..
+          $windres = Join-Path $mingwBin 'aarch64-w64-mingw32-windres.exe'
+          New-Item -ItemType Directory -Force -Path obj, release | Out-Null
+          if (Test-Path $windres) {
+            & $windres src\application.rc -o obj\resources.o -I src -I . 2>$null
+          }
+          $gcc = Join-Path $mingwBin 'aarch64-w64-mingw32-gcc.exe'
+          $obj = @()
+          if (Test-Path 'obj\resources.o') { $obj += 'obj\resources.o' }
+          $args = @('src\main.c') + $obj + @(
+            '-o', 'release\raylib-quickstart-c.exe', '-O2',
+            '-I', 'include', '-I', 'raylib\src',
+            '-L', 'raylib\src', '-lraylib', '-lgdi32', '-lwinmm', '-static'
+          )
+          & $gcc @args
+          if (Test-Path 'resources') { Copy-Item -Recurse resources release\resources -Force }
+
+      - name: Smoke (3s)
+        working-directory: ${{ env.PROJECT_DIR }}/release
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath ".\raylib-quickstart-c.exe" -PassThru -WorkingDirectory (Get-Location)
+          if (-not $p) { exit 1 }
+          Start-Sleep -Seconds 3
+          if ($p.HasExited) {
+            if ($p.ExitCode -ne 0) { exit $p.ExitCode }
+          } else {
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Zip
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: pwsh
+        run: |
+          Remove-Item -Force raylib-quickstart-c-windows-arm64.zip -ErrorAction SilentlyContinue
+          Compress-Archive -Path 'release\*' -DestinationPath 'raylib-quickstart-c-windows-arm64.zip' -Force
+
+      - name: Upload artifact
+        if: env.PUBLISH_S3 == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: quickstart-c-windows-arm64-zip
+          path: ${{ env.PROJECT_DIR }}/raylib-quickstart-c-windows-arm64.zip
+          if-no-files-found: error
+
+  itch-push-desktop:
+    runs-on: ubuntu-latest
+    needs:
+      - build-and-push-web
+      - build-macos-arm64
+      - build-macos-x86_64
+      - build-linux-x64
+      - build-linux-arm64
+      - build-windows-x64
+      - build-windows-arm64
+    if: env.PUBLISH_ITCH == 'true'
+    steps:
+      - uses: remarkablegames/setup-butler@v2
+        with:
+          butler-version: LATEST
+
+      - name: Download desktop zips
+        uses: actions/download-artifact@v4
+        with:
+          path: itch_in
+
+      - name: Push desktop folder to itch.io
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.build-and-push-web.outputs.version }}"
+          if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then VERSION="latest"; fi
+          mkdir -p itch_upload
+          find itch_in -name '*.zip' -exec cp {} itch_upload/ \;
+          ls -la itch_upload/
+          test "$(find itch_in -name '*.zip' | wc -l)" -ge 6
+          butler push itch_upload "${{ env.ITCH_USER }}/${{ env.ITCH_GAME }}:desktop" --userversion "$VERSION"
+          echo "✅ itch desktop channel updated"
 
   publish-s3:
     runs-on: ubuntu-latest
-    needs: [resolve-publish-flags, build-and-push-web, build-and-push-macos, build-and-push-windows]
-    if: |
-      needs.resolve-publish-flags.outputs.publish_s3 == 'true' &&
-      github.event_name != 'workflow_dispatch' &&
-      needs.build-and-push-web.result == 'success' &&
-      needs.build-and-push-macos.result == 'success' &&
-      needs.build-and-push-windows.result == 'success'
+    needs:
+      - resolve-publish-flags
+      - build-and-push-web
+      - build-macos-arm64
+      - build-macos-x86_64
+      - build-linux-x64
+      - build-linux-arm64
+      - build-windows-x64
+      - build-windows-arm64
+    if: needs.resolve-publish-flags.outputs.publish_s3 == 'true'
     steps:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
@@ -330,19 +570,34 @@ jobs:
           CATALOG_KEY="${CATEGORY}/${MATURITY}/catalog.json"
 
           WZIP="dist/quickstart-c-wasm-zip/raylib-quickstart-c_wasm.zip"
-          MZIP="dist/quickstart-c-macos-zip/raylib-quickstart-c-macos.zip"
-          WINZIP="dist/quickstart-c-windows-zip/raylib-quickstart-c-windows.zip"
+          MZ_ARM="dist/quickstart-c-macos-arm64-zip/raylib-quickstart-c-macos-arm64.zip"
+          MZ_X64="dist/quickstart-c-macos-x86_64-zip/raylib-quickstart-c-macos-x86_64.zip"
+          LNX_X64="dist/quickstart-c-linux-x86_64-zip/raylib-quickstart-c-linux-x86_64.zip"
+          LNX_ARM="dist/quickstart-c-linux-arm64-zip/raylib-quickstart-c-linux-arm64.zip"
+          WIN_X64="dist/quickstart-c-windows-x86_64-zip/raylib-quickstart-c-windows-x86_64.zip"
+          WIN_ARM="dist/quickstart-c-windows-arm64-zip/raylib-quickstart-c-windows-arm64.zip"
           WDIR="dist/quickstart-c-wasm-exploded"
 
-          test -f "$WZIP" && test -f "$MZIP" && test -f "$WINZIP" && test -d "$WDIR"
+          for f in "$WZIP" "$MZ_ARM" "$MZ_X64" "$LNX_X64" "$LNX_ARM" "$WIN_X64" "$WIN_ARM"; do
+            test -f "$f"
+          done
+          test -d "$WDIR"
 
           aws s3 cp "$WZIP" "s3://${BUCKET}/${PREFIX}/quickstart-c-wasm.zip"
-          aws s3 cp "$MZIP" "s3://${BUCKET}/${PREFIX}/quickstart-c-macos.zip"
-          aws s3 cp "$WINZIP" "s3://${BUCKET}/${PREFIX}/quickstart-c-windows.zip"
+          aws s3 cp "$MZ_ARM" "s3://${BUCKET}/${PREFIX}/quickstart-c-macos-arm64.zip"
+          aws s3 cp "$MZ_X64" "s3://${BUCKET}/${PREFIX}/quickstart-c-macos-x86_64.zip"
+          aws s3 cp "$LNX_X64" "s3://${BUCKET}/${PREFIX}/quickstart-c-linux-x86_64.zip"
+          aws s3 cp "$LNX_ARM" "s3://${BUCKET}/${PREFIX}/quickstart-c-linux-arm64.zip"
+          aws s3 cp "$WIN_X64" "s3://${BUCKET}/${PREFIX}/quickstart-c-windows-x86_64.zip"
+          aws s3 cp "$WIN_ARM" "s3://${BUCKET}/${PREFIX}/quickstart-c-windows-arm64.zip"
 
           sha256sum "$WZIP" | awk '{print $1 "  quickstart-c-wasm.zip"}' | aws s3 cp - "s3://${BUCKET}/${PREFIX}/quickstart-c-wasm.zip.sha256" --content-type text/plain
-          sha256sum "$MZIP" | awk '{print $1 "  quickstart-c-macos.zip"}' | aws s3 cp - "s3://${BUCKET}/${PREFIX}/quickstart-c-macos.zip.sha256" --content-type text/plain
-          sha256sum "$WINZIP" | awk '{print $1 "  quickstart-c-windows.zip"}' | aws s3 cp - "s3://${BUCKET}/${PREFIX}/quickstart-c-windows.zip.sha256" --content-type text/plain
+          sha256sum "$MZ_ARM" | awk '{print $1 "  quickstart-c-macos-arm64.zip"}' | aws s3 cp - "s3://${BUCKET}/${PREFIX}/quickstart-c-macos-arm64.zip.sha256" --content-type text/plain
+          sha256sum "$MZ_X64" | awk '{print $1 "  quickstart-c-macos-x86_64.zip"}' | aws s3 cp - "s3://${BUCKET}/${PREFIX}/quickstart-c-macos-x86_64.zip.sha256" --content-type text/plain
+          sha256sum "$LNX_X64" | awk '{print $1 "  quickstart-c-linux-x86_64.zip"}' | aws s3 cp - "s3://${BUCKET}/${PREFIX}/quickstart-c-linux-x86_64.zip.sha256" --content-type text/plain
+          sha256sum "$LNX_ARM" | awk '{print $1 "  quickstart-c-linux-arm64.zip"}' | aws s3 cp - "s3://${BUCKET}/${PREFIX}/quickstart-c-linux-arm64.zip.sha256" --content-type text/plain
+          sha256sum "$WIN_X64" | awk '{print $1 "  quickstart-c-windows-x86_64.zip"}' | aws s3 cp - "s3://${BUCKET}/${PREFIX}/quickstart-c-windows-x86_64.zip.sha256" --content-type text/plain
+          sha256sum "$WIN_ARM" | awk '{print $1 "  quickstart-c-windows-arm64.zip"}' | aws s3 cp - "s3://${BUCKET}/${PREFIX}/quickstart-c-windows-arm64.zip.sha256" --content-type text/plain
 
           cd "$WDIR"
           find . -type f | while IFS= read -r f; do
@@ -362,8 +617,12 @@ jobs:
           cd - >/dev/null
 
           SHA_W=$(sha256sum "$WZIP" | awk '{print $1}')
-          SHA_M=$(sha256sum "$MZIP" | awk '{print $1}')
-          SHA_WIN=$(sha256sum "$WINZIP" | awk '{print $1}')
+          SHA_M_ARM=$(sha256sum "$MZ_ARM" | awk '{print $1}')
+          SHA_M_X64=$(sha256sum "$MZ_X64" | awk '{print $1}')
+          SHA_LX=$(sha256sum "$LNX_X64" | awk '{print $1}')
+          SHA_LA=$(sha256sum "$LNX_ARM" | awk '{print $1}')
+          SHA_WX=$(sha256sum "$WIN_X64" | awk '{print $1}')
+          SHA_WA=$(sha256sum "$WIN_ARM" | awk '{print $1}')
           RELEASED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
           if ! aws s3 cp "s3://${BUCKET}/${CATALOG_KEY}" catalog.json 2>/dev/null; then
@@ -378,10 +637,18 @@ jobs:
             --arg ih "${{ env.S3_IFRAME_HEIGHT }}" \
             --arg wasm_zip "${BASE}/${PREFIX}/quickstart-c-wasm.zip" \
             --arg sha_wasm "$SHA_W" \
-            --arg mac_zip "${BASE}/${PREFIX}/quickstart-c-macos.zip" \
-            --arg sha_mac "$SHA_M" \
-            --arg win_zip "${BASE}/${PREFIX}/quickstart-c-windows.zip" \
-            --arg sha_win "$SHA_WIN" \
+            --arg mac_arm_zip "${BASE}/${PREFIX}/quickstart-c-macos-arm64.zip" \
+            --arg sha_mac_arm "$SHA_M_ARM" \
+            --arg mac_x64_zip "${BASE}/${PREFIX}/quickstart-c-macos-x86_64.zip" \
+            --arg sha_mac_x64 "$SHA_M_X64" \
+            --arg linux_x64_zip "${BASE}/${PREFIX}/quickstart-c-linux-x86_64.zip" \
+            --arg sha_linux_x64 "$SHA_LX" \
+            --arg linux_arm_zip "${BASE}/${PREFIX}/quickstart-c-linux-arm64.zip" \
+            --arg sha_linux_arm "$SHA_LA" \
+            --arg win_x64_zip "${BASE}/${PREFIX}/quickstart-c-windows-x86_64.zip" \
+            --arg sha_win_x64 "$SHA_WX" \
+            --arg win_arm_zip "${BASE}/${PREFIX}/quickstart-c-windows-arm64.zip" \
+            --arg sha_win_arm "$SHA_WA" \
             --arg play_wasm "${BASE}/${PREFIX}/wasm/index.html" \
             '{
               maturity: $mat,
@@ -390,8 +657,12 @@ jobs:
               iframe: {width: ($iw | tonumber), height: ($ih | tonumber)},
               platforms: {
                 wasm: {zip_url: $wasm_zip, sha256: $sha_wasm, play_url: $play_wasm},
-                macos: {zip_url: $mac_zip, sha256: $sha_mac},
-                windows: {zip_url: $win_zip, sha256: $sha_win}
+                macos_arm64: {zip_url: $mac_arm_zip, sha256: $sha_mac_arm},
+                macos_x86_64: {zip_url: $mac_x64_zip, sha256: $sha_mac_x64},
+                linux_x86_64: {zip_url: $linux_x64_zip, sha256: $sha_linux_x64},
+                linux_arm64: {zip_url: $linux_arm_zip, sha256: $sha_linux_arm},
+                windows_x86_64: {zip_url: $win_x64_zip, sha256: $sha_win_x64},
+                windows_arm64: {zip_url: $win_arm_zip, sha256: $sha_win_arm}
               }
             }')
 

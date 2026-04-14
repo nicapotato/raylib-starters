@@ -1,0 +1,16 @@
+# Badge + manual dispatch for macOS arm64 only (delegates to quickstart-c.yml).
+name: quickstart-c macOS arm64
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  run:
+    uses: ./.github/workflows/quickstart-c.yml
+    with:
+      build_platform: macos-arm64
+    secrets: inherit

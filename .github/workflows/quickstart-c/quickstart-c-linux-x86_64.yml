@@ -1,0 +1,16 @@
+# Badge + manual dispatch for Linux x86_64 only (delegates to quickstart-c.yml).
+name: quickstart-c Linux x86_64
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  run:
+    uses: ./.github/workflows/quickstart-c.yml
+    with:
+      build_platform: linux-x86_64
+    secrets: inherit
