@@ -502,7 +502,6 @@ jobs:
       - build-linux-arm64
       - build-windows-x64
       - build-windows-arm64
-    if: env.PUBLISH_ITCH == 'true'
     steps:
       - uses: remarkablegames/setup-butler@v2
         with:
