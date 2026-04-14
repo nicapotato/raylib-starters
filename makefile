@@ -25,6 +25,6 @@ ga-quickstart-c: ga-check-gh ## Dispatch main quickstart-c workflow (GA_BUILD_PL
 ga-quickstart-c-all: ga-check-gh ## Full release build + S3 + itch (build_platform=all)
 	@$(MAKE) ga-quickstart-c GA_BUILD_PLATFORM=all
 
-ga-quickstart-c-web: ga-check-gh ## WASM-only wrapper workflow (.github/workflows/quickstart-c/quickstart-c-web.yml)
-	@echo "$(GH) workflow run quickstart-c/quickstart-c-web.yml --ref $(BRANCH)"
-	@$(GH) workflow run quickstart-c/quickstart-c-web.yml --ref "$(BRANCH)"
+ga-quickstart-c-web: ga-check-gh ## WASM-only wrapper (must live in .github/workflows/*.yml — subfolders are not registered)
+	@echo "$(GH) workflow run quickstart-c-web.yml --ref $(BRANCH)"
+	@$(GH) workflow run quickstart-c-web.yml --ref "$(BRANCH)"
