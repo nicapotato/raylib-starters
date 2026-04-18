@@ -383,11 +383,20 @@ jobs:
           RAYLIB_CI_SMOKE=1 ./raylib-quickstart-c.exe
           cd ..
           rm -f raylib-quickstart-c-windows-x86_64.zip
-          if command -v zip >/dev/null 2>&1; then
-            zip -r raylib-quickstart-c-windows-x86_64.zip release
-          else
-            tar -a -c -f raylib-quickstart-c-windows-x86_64.zip release
-          fi
+          # zip/tar on Windows runners can produce archives Linux `unzip` rejects; use stdlib zipfile (POSIX names).
+          python <<'PY'
+          import zipfile
+          from pathlib import Path
+
+          out = "raylib-quickstart-c-windows-x86_64.zip"
+          root = Path("release")
+          if not root.is_dir():
+              raise SystemExit("release/ missing")
+          with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
+              for path in sorted(root.rglob("*")):
+                  if path.is_file():
+                      zf.write(path, path.relative_to(Path(".")).as_posix())
+          PY
 
       - name: Upload artifact
         if: env.PUBLISH_S3 == 'true'
@@ -462,11 +471,19 @@ jobs:
         run: |
           set -euo pipefail
           rm -f raylib-quickstart-c-windows-arm64.zip
-          if command -v zip >/dev/null 2>&1; then
-            zip -r raylib-quickstart-c-windows-arm64.zip release
-          else
-            tar -a -c -f raylib-quickstart-c-windows-arm64.zip release
-          fi
+          python <<'PY'
+          import zipfile
+          from pathlib import Path
+
+          out = "raylib-quickstart-c-windows-arm64.zip"
+          root = Path("release")
+          if not root.is_dir():
+              raise SystemExit("release/ missing")
+          with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
+              for path in sorted(root.rglob("*")):
+                  if path.is_file():
+                      zf.write(path, path.relative_to(Path(".")).as_posix())
+          PY
 
       - name: Upload artifact
         if: env.PUBLISH_S3 == 'true'
