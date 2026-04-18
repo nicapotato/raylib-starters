@@ -383,9 +383,7 @@ jobs:
           RAYLIB_CI_SMOKE=1 ./raylib-quickstart-c.exe
           cd ..
           rm -f raylib-quickstart-c-windows-x86_64.zip
-          GIT_ZIP="/c/Program Files/Git/usr/bin/zip.exe"
-          if [ ! -f "$GIT_ZIP" ]; then echo "ERROR: $GIT_ZIP not found"; exit 1; fi
-          ( cd release && "$GIT_ZIP" -r ../raylib-quickstart-c-windows-x86_64.zip . )
+          powershell -Command "Compress-Archive -Path 'release\\*' -DestinationPath 'raylib-quickstart-c-windows-x86_64.zip' -Force"
 
       - name: Upload artifact
         if: env.PUBLISH_S3 == 'true'
@@ -459,11 +457,7 @@ jobs:
         shell: pwsh
         run: |
           Remove-Item -Force raylib-quickstart-c-windows-arm64.zip -ErrorAction SilentlyContinue
-          $zipExe = Join-Path $env:ProgramFiles 'Git\usr\bin\zip.exe'
-          if (-not (Test-Path $zipExe)) { throw "Git zip not found: $zipExe" }
-          Push-Location release
-          & $zipExe -r ..\raylib-quickstart-c-windows-arm64.zip .
-          Pop-Location
+          Compress-Archive -Path 'release\*' -DestinationPath 'raylib-quickstart-c-windows-arm64.zip' -Force
 
       - name: Upload artifact
         if: env.PUBLISH_S3 == 'true'
