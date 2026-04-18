@@ -247,7 +247,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential libasound2-dev libx11-dev libxrandr-dev \
-            libxi-dev libxcursor-dev libgl1-mesa-dev libglu1-mesa-dev xvfb python3
+            libxi-dev libxcursor-dev libgl1-mesa-dev libglu1-mesa-dev libxinerama-dev
 
       - name: Version
         id: version
@@ -267,14 +267,14 @@ jobs:
           gcc src/main.c -o raylib-quickstart-c -O2 -std=c99 \
             -I include -I raylib/src -I raylib/src/external \
             -L raylib/src -lraylib -lGL -lm -lpthread -ldl -lrt \
-            -lX11 -lXrandr -lXi -lXcursor -lasound
+            -lX11 -lXrandr -lXi -lXcursor -lXinerama -lasound
           mkdir -p release
           mv raylib-quickstart-c release/
           if [ -d resources ]; then cp -r resources release/; fi
 
-      - name: Smoke (3s, xvfb)
+      - name: Headless smoke (RAYLIB_CI_SMOKE)
         working-directory: ${{ env.PROJECT_DIR }}/release
-        run: xvfb-run -a python3 ../ci/smoke_run.py 3 ./raylib-quickstart-c
+        run: env RAYLIB_CI_SMOKE=1 ./raylib-quickstart-c
 
       - name: Zip
         working-directory: ${{ env.PROJECT_DIR }}
@@ -304,7 +304,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential libasound2-dev libx11-dev libxrandr-dev \
-            libxi-dev libxcursor-dev libgl1-mesa-dev libglu1-mesa-dev xvfb python3
+            libxi-dev libxcursor-dev libgl1-mesa-dev libglu1-mesa-dev libxinerama-dev
 
       - name: Version
         id: version
@@ -324,14 +324,14 @@ jobs:
           gcc src/main.c -o raylib-quickstart-c -O2 -std=c99 \
             -I include -I raylib/src -I raylib/src/external \
             -L raylib/src -lraylib -lGL -lm -lpthread -ldl -lrt \
-            -lX11 -lXrandr -lXi -lXcursor -lasound
+            -lX11 -lXrandr -lXi -lXcursor -lXinerama -lasound
           mkdir -p release
           mv raylib-quickstart-c release/
           if [ -d resources ]; then cp -r resources release/; fi
 
-      - name: Smoke (3s, xvfb)
+      - name: Headless smoke (RAYLIB_CI_SMOKE)
         working-directory: ${{ env.PROJECT_DIR }}/release
-        run: xvfb-run -a python3 ../ci/smoke_run.py 3 ./raylib-quickstart-c
+        run: env RAYLIB_CI_SMOKE=1 ./raylib-quickstart-c
 
       - name: Zip
         working-directory: ${{ env.PROJECT_DIR }}
@@ -391,9 +391,9 @@ jobs:
             gcc src/main.c -o release/raylib-quickstart-c.exe -O2 -I include -I raylib/src -L raylib/src -lraylib -lgdi32 -lwinmm -static
           fi
           if [ -d "resources" ]; then cp -r resources release/resources || true; fi
-          echo "Smoke x64 (3s)..."
+          echo "Headless smoke (RAYLIB_CI_SMOKE)..."
           cd release
-          python ../ci/smoke_run.py 3 ./raylib-quickstart-c.exe
+          RAYLIB_CI_SMOKE=1 ./raylib-quickstart-c.exe
           cd ..
           rm -f raylib-quickstart-c-windows-x86_64.zip
           powershell -Command "Compress-Archive -Path 'release\\*' -DestinationPath 'raylib-quickstart-c-windows-x86_64.zip' -Force"
@@ -466,18 +466,13 @@ jobs:
           & $gcc @args
           if (Test-Path 'resources') { Copy-Item -Recurse resources release\resources -Force }
 
-      - name: Smoke (3s)
+      - name: Headless smoke (RAYLIB_CI_SMOKE)
         working-directory: ${{ env.PROJECT_DIR }}/release
         shell: pwsh
         run: |
-          $p = Start-Process -FilePath ".\raylib-quickstart-c.exe" -PassThru -WorkingDirectory (Get-Location)
-          if (-not $p) { exit 1 }
-          Start-Sleep -Seconds 3
-          if ($p.HasExited) {
-            if ($p.ExitCode -ne 0) { exit $p.ExitCode }
-          } else {
-            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
-          }
+          $env:RAYLIB_CI_SMOKE = '1'
+          & .\raylib-quickstart-c.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Zip
         working-directory: ${{ env.PROJECT_DIR }}
