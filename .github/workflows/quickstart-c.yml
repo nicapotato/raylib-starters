@@ -383,7 +383,11 @@ jobs:
           RAYLIB_CI_SMOKE=1 ./raylib-quickstart-c.exe
           cd ..
           rm -f raylib-quickstart-c-windows-x86_64.zip
-          powershell -Command "Compress-Archive -Path 'release\\*' -DestinationPath 'raylib-quickstart-c-windows-x86_64.zip' -Force"
+          if command -v zip >/dev/null 2>&1; then
+            zip -r raylib-quickstart-c-windows-x86_64.zip release
+          else
+            tar -a -c -f raylib-quickstart-c-windows-x86_64.zip release
+          fi
 
       - name: Upload artifact
         if: env.PUBLISH_S3 == 'true'
@@ -454,10 +458,15 @@ jobs:
 
       - name: Zip
         working-directory: ${{ env.PROJECT_DIR }}
-        shell: pwsh
+        shell: bash
         run: |
-          Remove-Item -Force raylib-quickstart-c-windows-arm64.zip -ErrorAction SilentlyContinue
-          Compress-Archive -Path 'release\*' -DestinationPath 'raylib-quickstart-c-windows-arm64.zip' -Force
+          set -euo pipefail
+          rm -f raylib-quickstart-c-windows-arm64.zip
+          if command -v zip >/dev/null 2>&1; then
+            zip -r raylib-quickstart-c-windows-arm64.zip release
+          else
+            tar -a -c -f raylib-quickstart-c-windows-arm64.zip release
+          fi
 
       - name: Upload artifact
         if: env.PUBLISH_S3 == 'true'
