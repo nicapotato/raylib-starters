@@ -383,7 +383,9 @@ jobs:
           RAYLIB_CI_SMOKE=1 ./raylib-quickstart-c.exe
           cd ..
           rm -f raylib-quickstart-c-windows-x86_64.zip
-          powershell -Command "Compress-Archive -Path 'release\\*' -DestinationPath 'raylib-quickstart-c-windows-x86_64.zip' -Force"
+          GIT_ZIP="/c/Program Files/Git/usr/bin/zip.exe"
+          if [ ! -f "$GIT_ZIP" ]; then echo "ERROR: $GIT_ZIP not found"; exit 1; fi
+          ( cd release && "$GIT_ZIP" -r ../raylib-quickstart-c-windows-x86_64.zip . )
 
       - name: Upload artifact
         if: env.PUBLISH_S3 == 'true'
@@ -457,7 +459,11 @@ jobs:
         shell: pwsh
         run: |
           Remove-Item -Force raylib-quickstart-c-windows-arm64.zip -ErrorAction SilentlyContinue
-          Compress-Archive -Path 'release\*' -DestinationPath 'raylib-quickstart-c-windows-arm64.zip' -Force
+          $zipExe = Join-Path $env:ProgramFiles 'Git\usr\bin\zip.exe'
+          if (-not (Test-Path $zipExe)) { throw "Git zip not found: $zipExe" }
+          Push-Location release
+          & $zipExe -r ..\raylib-quickstart-c-windows-arm64.zip .
+          Pop-Location
 
       - name: Upload artifact
         if: env.PUBLISH_S3 == 'true'
@@ -506,15 +512,26 @@ jobs:
             echo "butler push -> ${ITCH}:${channel} (--userversion ${VERSION})"
             butler push "$path" "${ITCH}:${channel}" --userversion "$VERSION"
           }
-          # Paths match actions/upload-artifact names in build jobs
-          push_zip "itch_in/quickstart-c-wasm-zip/raylib-quickstart-c_wasm.zip" "wasm-zip"
+          # PowerShell/Windows zips can trip Butler's zip walker ("insecure file path"); push unpacked dir.
+          push_windows_unpacked() {
+            local zip_path="$1"
+            local channel="$2"
+            test -f "$zip_path"
+            local tmpdir
+            tmpdir=$(mktemp -d)
+            unzip -q "$zip_path" -d "$tmpdir"
+            echo "butler push (Windows zip unpacked) -> ${ITCH}:${channel} (--userversion ${VERSION})"
+            butler push "$tmpdir" "${ITCH}:${channel}" --userversion "$VERSION"
+            rm -rf "$tmpdir"
+          }
+          # Desktop .zip only; HTML5 is pushed separately to :web (no redundant wasm zip channel)
           push_zip "itch_in/quickstart-c-macos-arm64-zip/raylib-quickstart-c-macos-arm64.zip" "macos-arm64"
           push_zip "itch_in/quickstart-c-macos-x86_64-zip/raylib-quickstart-c-macos-x86_64.zip" "macos-x86-64"
           push_zip "itch_in/quickstart-c-linux-x86_64-zip/raylib-quickstart-c-linux-x86_64.zip" "linux-x86-64"
           push_zip "itch_in/quickstart-c-linux-arm64-zip/raylib-quickstart-c-linux-arm64.zip" "linux-arm64"
-          push_zip "itch_in/quickstart-c-windows-x86_64-zip/raylib-quickstart-c-windows-x86_64.zip" "windows-x86-64"
-          push_zip "itch_in/quickstart-c-windows-arm64-zip/raylib-quickstart-c-windows-arm64.zip" "windows-arm64"
-          echo "✅ All platform zips pushed to separate itch.io channels"
+          push_windows_unpacked "itch_in/quickstart-c-windows-x86_64-zip/raylib-quickstart-c-windows-x86_64.zip" "windows-x86-64"
+          push_windows_unpacked "itch_in/quickstart-c-windows-arm64-zip/raylib-quickstart-c-windows-arm64.zip" "windows-arm64"
+          echo "✅ All desktop zips pushed to separate itch.io channels"
 
   publish-s3:
     runs-on: ubuntu-latest

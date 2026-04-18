@@ -43,4 +43,4 @@ Release **version** always comes from [`quickstart-c/project.conf`](quickstart-c
 make ga-quickstart-c GA_BUILD_PLATFORM=web GA_CHANNEL=web
 ```
 
-Full `build_platform=all` pushes HTML5 to the `web` channel and each downloadable `.zip` to its own channel: `wasm-zip`, `macos-arm64`, `macos-x86-64`, `linux-x86-64`, `linux-arm64`, `windows-x86-64`, `windows-arm64`.
+Full `build_platform=all` pushes HTML5 to the `web` channel and each desktop `.zip` to its own channel: `macos-arm64`, `macos-x86-64`, `linux-x86-64`, `linux-arm64`, `windows-x86-64`, `windows-arm64`. (The WASM zip is still published to S3 for the catalog; it is not duplicated on itch.)
