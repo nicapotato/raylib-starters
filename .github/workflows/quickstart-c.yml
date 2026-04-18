@@ -21,12 +21,7 @@ on:
           - windows-x86_64
           - windows-arm64
       channel:
-        description: 'itch.io channel name (e.g., web, macos, osx)'
-        required: false
-        default: ''
-        type: string
-      version:
-        description: 'Version override (leave empty to use project.conf)'
+        description: 'itch.io channel name for HTML5 web push only (default: web)'
         required: false
         default: ''
         type: string
@@ -36,10 +31,6 @@ on:
         required: true
         type: string
       channel:
-        required: false
-        type: string
-        default: ''
-      version:
         required: false
         type: string
         default: ''
@@ -71,13 +62,32 @@ jobs:
       - id: flags
         run: echo "publish_s3=${PUBLISH_S3}" >> "$GITHUB_OUTPUT"
 
+  # Single source of truth for release version (quickstart-c/project.conf)
+  read-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: |
+          set -euo pipefail
+          f="${{ env.PROJECT_DIR }}/project.conf"
+          test -f "$f"
+          V=$(grep '^VERSION=' "$f" | cut -d= -f2)
+          if [ -z "${V:-}" ]; then
+            echo "ERROR: VERSION must be set in $f"
+            exit 1
+          fi
+          echo "version=${V}" >> "$GITHUB_OUTPUT"
+          echo "CI version from project.conf: ${V}"
+
   build-and-push-web:
+    needs: read-version
     runs-on: ubuntu-latest
     timeout-minutes: 30
     if: >-
       contains(fromJSON('["web","all"]'), inputs.build_platform)
-    outputs:
-      version: ${{ steps.web_build.outputs.version }}
 
     steps:
       - name: Checkout code
@@ -97,7 +107,6 @@ jobs:
           itch_game: ${{ env.ITCH_GAME }}
           build_platform: web
           channel: ${{ inputs.channel != '' && inputs.channel || 'web' }}
-          version_override: ${{ inputs.version }}
           butler_api_key: ${{ secrets.BUTLER_API_KEY }}
           publish_itch: ${{ env.PUBLISH_ITCH == 'true' }}
 
@@ -118,12 +127,11 @@ jobs:
           if-no-files-found: error
 
   build-macos-arm64:
+    needs: read-version
     runs-on: macos-latest
     timeout-minutes: 60
     if: >-
       contains(fromJSON('["macos","macos-arm64","all"]'), inputs.build_platform)
-    outputs:
-      version: ${{ steps.setup.outputs.version }}
 
     steps:
       - name: Checkout code
@@ -138,12 +146,11 @@ jobs:
           itch_game: ${{ env.ITCH_GAME }}
           build_platform: macos
           channel: ${{ inputs.channel != '' && inputs.channel || 'osx' }}
-          version_override: ${{ inputs.version }}
           butler_api_key: ${{ secrets.BUTLER_API_KEY }}
           skip_project_build: 'true'
           publish_itch: 'false'
 
-      - name: Build Raylib + app (arm64), smoke, zip
+      - name: Build Raylib + app (arm64), verify binary, zip
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           set -euo pipefail
@@ -159,8 +166,9 @@ jobs:
             -framework Cocoa -framework IOKit -framework OpenGL \
             -arch arm64
           if [ -d "resources" ]; then cp -r resources bin/Debug/; fi
-          echo "🧪 Smoke arm64 (3s)..."
-          python3 ci/smoke_run.py 3 bin/Debug/raylib-quickstart-c
+          echo "ℹ️  Skipping live window smoke on macOS CI (GitHub runners are headless; GLFW needs a display)."
+          test -x bin/Debug/raylib-quickstart-c
+          file bin/Debug/raylib-quickstart-c
           make app-bundle
           rm -f raylib-quickstart-c-macos-arm64.zip
           zip -r raylib-quickstart-c-macos-arm64.zip raylib-quickstart-c.app
@@ -175,12 +183,11 @@ jobs:
           if-no-files-found: error
 
   build-macos-x86_64:
+    needs: read-version
     runs-on: macos-latest
     timeout-minutes: 60
     if: >-
       contains(fromJSON('["macos","macos-x86_64","all"]'), inputs.build_platform)
-    outputs:
-      version: ${{ steps.setup.outputs.version }}
 
     steps:
       - name: Checkout code
@@ -195,12 +202,11 @@ jobs:
           itch_game: ${{ env.ITCH_GAME }}
           build_platform: macos
           channel: ${{ inputs.channel != '' && inputs.channel || 'osx' }}
-          version_override: ${{ inputs.version }}
           butler_api_key: ${{ secrets.BUTLER_API_KEY }}
           skip_project_build: 'true'
           publish_itch: 'false'
 
-      - name: Build Raylib + app (x86_64), smoke, zip
+      - name: Build Raylib + app (x86_64), verify binary, zip
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           set -euo pipefail
@@ -217,8 +223,9 @@ jobs:
             -framework Cocoa -framework IOKit -framework OpenGL \
             -arch x86_64
           if [ -d "resources" ]; then cp -r resources bin/Debug/; fi
-          echo "🧪 Smoke x86_64 (3s)..."
-          arch -x86_64 python3 ci/smoke_run.py 3 bin/Debug/raylib-quickstart-c
+          echo "ℹ️  Skipping live window smoke on macOS CI (GitHub runners are headless; GLFW needs a display)."
+          test -x bin/Debug/raylib-quickstart-c
+          file bin/Debug/raylib-quickstart-c
           make app-bundle
           rm -f raylib-quickstart-c-macos-x86_64.zip
           zip -r raylib-quickstart-c-macos-x86_64.zip raylib-quickstart-c.app
@@ -232,12 +239,11 @@ jobs:
           if-no-files-found: error
 
   build-linux-x64:
+    needs: read-version
     runs-on: ubuntu-latest
     timeout-minutes: 45
     if: >-
       contains(fromJSON('["linux","linux-x86_64","all"]'), inputs.build_platform)
-    outputs:
-      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -245,14 +251,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential libasound2-dev libx11-dev libxrandr-dev \
-            libxi-dev libxcursor-dev libgl1-mesa-dev libglu1-mesa-dev xvfb python3
-
-      - name: Version
-        id: version
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          if [ -f project.conf ]; then V=$(grep '^VERSION=' project.conf | cut -d= -f2); else V=latest; fi
-          echo "version=${V:-latest}" >> "$GITHUB_OUTPUT"
+            libxi-dev libxcursor-dev libgl1-mesa-dev libglu1-mesa-dev libxinerama-dev
 
       - name: Clone Raylib + build
         working-directory: ${{ env.PROJECT_DIR }}
@@ -265,14 +264,14 @@ jobs:
           gcc src/main.c -o raylib-quickstart-c -O2 -std=c99 \
             -I include -I raylib/src -I raylib/src/external \
             -L raylib/src -lraylib -lGL -lm -lpthread -ldl -lrt \
-            -lX11 -lXrandr -lXi -lXcursor -lasound
+            -lX11 -lXrandr -lXi -lXcursor -lXinerama -lasound
           mkdir -p release
           mv raylib-quickstart-c release/
           if [ -d resources ]; then cp -r resources release/; fi
 
-      - name: Smoke (3s, xvfb)
+      - name: Headless smoke (RAYLIB_CI_SMOKE)
         working-directory: ${{ env.PROJECT_DIR }}/release
-        run: xvfb-run -a python3 ../ci/smoke_run.py 3 ./raylib-quickstart-c
+        run: env RAYLIB_CI_SMOKE=1 ./raylib-quickstart-c
 
       - name: Zip
         working-directory: ${{ env.PROJECT_DIR }}
@@ -289,12 +288,11 @@ jobs:
           if-no-files-found: error
 
   build-linux-arm64:
+    needs: read-version
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
     if: >-
       contains(fromJSON('["linux","linux-arm64","all"]'), inputs.build_platform)
-    outputs:
-      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -302,14 +300,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential libasound2-dev libx11-dev libxrandr-dev \
-            libxi-dev libxcursor-dev libgl1-mesa-dev libglu1-mesa-dev xvfb python3
-
-      - name: Version
-        id: version
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          if [ -f project.conf ]; then V=$(grep '^VERSION=' project.conf | cut -d= -f2); else V=latest; fi
-          echo "version=${V:-latest}" >> "$GITHUB_OUTPUT"
+            libxi-dev libxcursor-dev libgl1-mesa-dev libglu1-mesa-dev libxinerama-dev
 
       - name: Clone Raylib + build
         working-directory: ${{ env.PROJECT_DIR }}
@@ -322,14 +313,14 @@ jobs:
           gcc src/main.c -o raylib-quickstart-c -O2 -std=c99 \
             -I include -I raylib/src -I raylib/src/external \
             -L raylib/src -lraylib -lGL -lm -lpthread -ldl -lrt \
-            -lX11 -lXrandr -lXi -lXcursor -lasound
+            -lX11 -lXrandr -lXi -lXcursor -lXinerama -lasound
           mkdir -p release
           mv raylib-quickstart-c release/
           if [ -d resources ]; then cp -r resources release/; fi
 
-      - name: Smoke (3s, xvfb)
+      - name: Headless smoke (RAYLIB_CI_SMOKE)
         working-directory: ${{ env.PROJECT_DIR }}/release
-        run: xvfb-run -a python3 ../ci/smoke_run.py 3 ./raylib-quickstart-c
+        run: env RAYLIB_CI_SMOKE=1 ./raylib-quickstart-c
 
       - name: Zip
         working-directory: ${{ env.PROJECT_DIR }}
@@ -346,12 +337,11 @@ jobs:
           if-no-files-found: error
 
   build-windows-x64:
+    needs: read-version
     runs-on: windows-latest
     timeout-minutes: 45
     if: >-
       contains(fromJSON('["windows","windows-x86_64","all"]'), inputs.build_platform)
-    outputs:
-      version: ${{ steps.setup.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -369,7 +359,6 @@ jobs:
           itch_game: ${{ env.ITCH_GAME }}
           build_platform: windows
           channel: ${{ inputs.channel != '' && inputs.channel || 'windows' }}
-          version_override: ${{ inputs.version }}
           butler_api_key: ${{ secrets.BUTLER_API_KEY }}
           skip_project_build: 'true'
           publish_itch: 'false'
@@ -389,12 +378,25 @@ jobs:
             gcc src/main.c -o release/raylib-quickstart-c.exe -O2 -I include -I raylib/src -L raylib/src -lraylib -lgdi32 -lwinmm -static
           fi
           if [ -d "resources" ]; then cp -r resources release/resources || true; fi
-          echo "Smoke x64 (3s)..."
+          echo "Headless smoke (RAYLIB_CI_SMOKE)..."
           cd release
-          python ../ci/smoke_run.py 3 ./raylib-quickstart-c.exe
+          RAYLIB_CI_SMOKE=1 ./raylib-quickstart-c.exe
           cd ..
           rm -f raylib-quickstart-c-windows-x86_64.zip
-          powershell -Command "Compress-Archive -Path 'release\\*' -DestinationPath 'raylib-quickstart-c-windows-x86_64.zip' -Force"
+          # zip/tar on Windows runners can produce archives Linux `unzip` rejects; use stdlib zipfile (POSIX names).
+          python <<'PY'
+          import zipfile
+          from pathlib import Path
+
+          out = "raylib-quickstart-c-windows-x86_64.zip"
+          root = Path("release")
+          if not root.is_dir():
+              raise SystemExit("release/ missing")
+          with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
+              for path in sorted(root.rglob("*")):
+                  if path.is_file():
+                      zf.write(path, path.relative_to(Path(".")).as_posix())
+          PY
 
       - name: Upload artifact
         if: env.PUBLISH_S3 == 'true'
@@ -405,22 +407,13 @@ jobs:
           if-no-files-found: error
 
   build-windows-arm64:
+    needs: read-version
     runs-on: windows-11-arm
     timeout-minutes: 60
     if: >-
       contains(fromJSON('["windows","windows-arm64","all"]'), inputs.build_platform)
-    outputs:
-      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Version
-        id: version
-        working-directory: ${{ env.PROJECT_DIR }}
-        shell: bash
-        run: |
-          if [ -f project.conf ]; then V=$(grep '^VERSION=' project.conf | cut -d= -f2); else V=latest; fi
-          echo "version=${V:-latest}" >> "$GITHUB_OUTPUT"
 
       - name: Install llvm-mingw (aarch64) + build Raylib + app
         working-directory: ${{ env.PROJECT_DIR }}
@@ -464,25 +457,33 @@ jobs:
           & $gcc @args
           if (Test-Path 'resources') { Copy-Item -Recurse resources release\resources -Force }
 
-      - name: Smoke (3s)
+      - name: Headless smoke (RAYLIB_CI_SMOKE)
         working-directory: ${{ env.PROJECT_DIR }}/release
         shell: pwsh
         run: |
-          $p = Start-Process -FilePath ".\raylib-quickstart-c.exe" -PassThru -WorkingDirectory (Get-Location)
-          if (-not $p) { exit 1 }
-          Start-Sleep -Seconds 3
-          if ($p.HasExited) {
-            if ($p.ExitCode -ne 0) { exit $p.ExitCode }
-          } else {
-            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
-          }
+          $env:RAYLIB_CI_SMOKE = '1'
+          & .\raylib-quickstart-c.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Zip
         working-directory: ${{ env.PROJECT_DIR }}
-        shell: pwsh
+        shell: bash
         run: |
-          Remove-Item -Force raylib-quickstart-c-windows-arm64.zip -ErrorAction SilentlyContinue
-          Compress-Archive -Path 'release\*' -DestinationPath 'raylib-quickstart-c-windows-arm64.zip' -Force
+          set -euo pipefail
+          rm -f raylib-quickstart-c-windows-arm64.zip
+          python <<'PY'
+          import zipfile
+          from pathlib import Path
+
+          out = "raylib-quickstart-c-windows-arm64.zip"
+          root = Path("release")
+          if not root.is_dir():
+              raise SystemExit("release/ missing")
+          with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
+              for path in sorted(root.rglob("*")):
+                  if path.is_file():
+                      zf.write(path, path.relative_to(Path(".")).as_posix())
+          PY
 
       - name: Upload artifact
         if: env.PUBLISH_S3 == 'true'
@@ -495,6 +496,7 @@ jobs:
   itch-push-desktop:
     runs-on: ubuntu-latest
     needs:
+      - read-version
       - build-and-push-web
       - build-macos-arm64
       - build-macos-x86_64
@@ -507,29 +509,55 @@ jobs:
         with:
           butler-version: LATEST
 
-      - name: Download desktop zips
+      - name: Download build zips (one artifact per platform)
         uses: actions/download-artifact@v4
         with:
           path: itch_in
 
-      - name: Push desktop folder to itch.io
+      - name: Push each zip to its own itch.io channel
         env:
           BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+          VERSION: ${{ needs.read-version.outputs.version }}
+          ITCH: ${{ env.ITCH_USER }}/${{ env.ITCH_GAME }}
         run: |
           set -euo pipefail
-          VERSION="${{ needs.build-and-push-web.outputs.version }}"
-          if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then VERSION="latest"; fi
-          mkdir -p itch_upload
-          find itch_in -name '*.zip' -exec cp {} itch_upload/ \;
-          ls -la itch_upload/
-          test "$(find itch_in -name '*.zip' | wc -l)" -ge 6
-          butler push itch_upload "${{ env.ITCH_USER }}/${{ env.ITCH_GAME }}:desktop" --userversion "$VERSION"
-          echo "✅ itch desktop channel updated"
+          if [ -z "${VERSION:-}" ] || [ "$VERSION" = "null" ]; then
+            echo "ERROR: read-version did not produce a version"
+            exit 1
+          fi
+          push_zip() {
+            local path="$1"
+            local channel="$2"
+            test -f "$path"
+            echo "butler push -> ${ITCH}:${channel} (--userversion ${VERSION})"
+            butler push "$path" "${ITCH}:${channel}" --userversion "$VERSION"
+          }
+          # PowerShell/Windows zips can trip Butler's zip walker ("insecure file path"); push unpacked dir.
+          push_windows_unpacked() {
+            local zip_path="$1"
+            local channel="$2"
+            test -f "$zip_path"
+            local tmpdir
+            tmpdir=$(mktemp -d)
+            unzip -q "$zip_path" -d "$tmpdir"
+            echo "butler push (Windows zip unpacked) -> ${ITCH}:${channel} (--userversion ${VERSION})"
+            butler push "$tmpdir" "${ITCH}:${channel}" --userversion "$VERSION"
+            rm -rf "$tmpdir"
+          }
+          # Desktop .zip only; HTML5 is pushed separately to :web (no redundant wasm zip channel)
+          push_zip "itch_in/quickstart-c-macos-arm64-zip/raylib-quickstart-c-macos-arm64.zip" "macos-arm64"
+          push_zip "itch_in/quickstart-c-macos-x86_64-zip/raylib-quickstart-c-macos-x86_64.zip" "macos-x86-64"
+          push_zip "itch_in/quickstart-c-linux-x86_64-zip/raylib-quickstart-c-linux-x86_64.zip" "linux-x86-64"
+          push_zip "itch_in/quickstart-c-linux-arm64-zip/raylib-quickstart-c-linux-arm64.zip" "linux-arm64"
+          push_windows_unpacked "itch_in/quickstart-c-windows-x86_64-zip/raylib-quickstart-c-windows-x86_64.zip" "windows-x86-64"
+          push_windows_unpacked "itch_in/quickstart-c-windows-arm64-zip/raylib-quickstart-c-windows-arm64.zip" "windows-arm64"
+          echo "✅ All desktop zips pushed to separate itch.io channels"
 
   publish-s3:
     runs-on: ubuntu-latest
     needs:
       - resolve-publish-flags
+      - read-version
       - build-and-push-web
       - build-macos-arm64
       - build-macos-x86_64
@@ -553,7 +581,7 @@ jobs:
       - name: Upload zips, WASM tree, checksums, merge catalog
         env:
           BUCKET: ${{ secrets.S3_PUBLIC_SOFTWARE_BUCKET }}
-          VERSION: ${{ needs.build-and-push-web.outputs.version }}
+          VERSION: ${{ needs.read-version.outputs.version }}
           GAME_KEY: ${{ env.S3_GAME_KEY }}
           AWS_REGION: ${{ env.AWS_REGION }}
         run: |

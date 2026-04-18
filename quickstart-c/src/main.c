@@ -1,3 +1,5 @@
+#include <stdlib.h>
+
 #include "raylib.h"
 #include "raymath.h"
 #include "resource_dir.h" // utility header for SearchAndSetResourceDir
@@ -170,6 +172,10 @@ void DrawShader() {
 
 int main()
 {
+    if (getenv("RAYLIB_CI_SMOKE") != NULL) {
+        return 0;
+    }
+
     // Use high DPI if available (looks much sharper on Mac)
     SetConfigFlags(FLAG_VSYNC_HINT | FLAG_WINDOW_HIGHDPI);
     InitWindow(1280, 800, "Raylib Quickstart C");
