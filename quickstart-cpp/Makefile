@@ -99,7 +99,7 @@ VERSION := $(shell grep '^VERSION=' project.conf | cut -d= -f2)
 ifeq ($(VERSION),)
   VERSION := latest
 endif
-S3_BASE_PATH = s3://dev-nicapotato-user-content/games/quickstart-cpp/$(VERSION)/mac-arm64
+S3_BASE_PATH = s3://dev-mindtricks-user-content/games/quickstart-cpp/$(VERSION)/mac-arm64
 
 app-bundle:
 	@echo "==== Creating macOS .app bundle ===="

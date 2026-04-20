@@ -11,7 +11,7 @@ Make sure to update this file before releasing a new version.
 VERSION=0.0.1
 ```
 
-All uploads will go to `s3://dev-nicapotato-user-content/games/quickstart-c/<VERSION>/<PLATFORM>/`.
+All uploads will go to `s3://dev-mindtricks-user-content/games/quickstart-c/<VERSION>/<PLATFORM>/`.
 
 ## Mac Distribution (DMG)
 
@@ -37,7 +37,7 @@ make upload
 ```
 
 The upload path is versioned based on `project.conf`.
-Example: `s3://dev-nicapotato-user-content/games/quickstart-c/0.0.1/mac-arm64/`
+Example: `s3://dev-mindtricks-user-content/games/quickstart-c/0.0.1/mac-arm64/`
 
 ---
 
@@ -61,7 +61,7 @@ Run the `build-release.bat` script. It will:
 3.  Read the version from `project.conf`.
 4.  Upload it to S3.
 
-Example: `s3://dev-nicapotato-user-content/games/quickstart-c/0.0.1/windows/`
+Example: `s3://dev-mindtricks-user-content/games/quickstart-c/0.0.1/windows/`
 
 ---
 
@@ -97,5 +97,5 @@ make -f Makefile.web upload
 ```
 
 The upload path is versioned based on `project.conf`.
-Example: `s3://dev-nicapotato-user-content/games/quickstart-c/0.0.1/wasm/`
+Example: `s3://dev-mindtricks-user-content/games/quickstart-c/0.0.1/wasm/`
 
