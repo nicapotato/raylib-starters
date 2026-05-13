@@ -1,0 +1,599 @@
+name: Quickstart C Controller CI/CD - itch.io (apps / prototype)
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_platform:
+        description: 'Platform to build'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - web
+          - macos
+          - macos-arm64
+          - macos-x86_64
+          - windows
+      channel:
+        description: >
+          Optional itch channel override. Empty = per-job defaults (web→web, mac arm→osx,
+          intel→macos-x86-64, windows→windows). Desktop jobs never push to channel "web".
+        required: false
+        default: ''
+        type: string
+      version:
+        description: 'Version override (leave empty to use project.conf)'
+        required: false
+        default: ''
+        type: string
+
+concurrency:
+  group: quickstart-c-controller-cicd-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  PROJECT_DIR: quickstart-c-controller
+  ITCH_USER: nicapotato
+  ITCH_GAME: quickstart-c-controller
+  AWS_REGION: eu-west-2
+  S3_CATEGORY: apps
+  S3_MATURITY: prototype
+  S3_GAME_KEY: quickstart-c-controller
+  S3_IFRAME_WIDTH: '800'
+  S3_IFRAME_HEIGHT: '450'
+  PUBLISH_ITCH: 'true'
+  PUBLISH_S3: 'true'
+
+jobs:
+  resolve-publish-flags:
+    runs-on: ubuntu-latest
+    outputs:
+      publish_s3: ${{ steps.flags.outputs.publish_s3 }}
+    steps:
+      - id: flags
+        run: echo "publish_s3=${PUBLISH_S3}" >> "$GITHUB_OUTPUT"
+
+  read-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${INPUT_VERSION}" ]; then
+            echo "version=${INPUT_VERSION}" >> "$GITHUB_OUTPUT"
+            echo "✅ Version from workflow input: ${INPUT_VERSION}"
+            exit 0
+          fi
+          f="${{ env.PROJECT_DIR }}/project.conf"
+          test -f "$f"
+          V=$(grep '^VERSION=' "$f" | cut -d= -f2)
+          if [ -z "${V}" ]; then
+            V="latest"
+          fi
+          echo "version=${V}" >> "$GITHUB_OUTPUT"
+          echo "✅ Version from project.conf: ${V}"
+
+  build-and-push-web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      contains(fromJSON('["web","all"]'), github.event.inputs.build_platform)
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    env:
+      BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 'latest'
+
+      - name: Ensure raylib sources for Makefile.web
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/external
+          if [ ! -d "build/external/raylib-master/.git" ]; then
+            git clone --depth 1 https://github.com/raysan5/raylib.git build/external/raylib-master
+          fi
+
+      - name: Extract version
+        id: version
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          elif [ -f "project.conf" ]; then
+            VERSION=$(grep '^VERSION=' project.conf | cut -d= -f2)
+            VERSION="${VERSION:-latest}"
+          else
+            VERSION="latest"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Build WASM
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -euo pipefail
+          make -f Makefile.web clean || true
+          make -f Makefile.web all
+
+      - name: Package WASM
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: make -f Makefile.web package
+
+      - name: Upload WASM zip (S3)
+        if: env.PUBLISH_S3 == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: quickstart-c-controller-wasm-zip
+          path: ${{ env.PROJECT_DIR }}/bin/wasm/quickstart-c-controller_wasm.zip
+          if-no-files-found: error
+
+      - name: Upload WASM exploded (S3)
+        if: env.PUBLISH_S3 == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: quickstart-c-controller-wasm-exploded
+          path: ${{ env.PROJECT_DIR }}/bin/wasm/
+          if-no-files-found: error
+
+      - name: Setup butler
+        if: env.PUBLISH_ITCH == 'true'
+        uses: remarkablegames/setup-butler@v2
+        with:
+          butler-version: LATEST
+
+      - name: Push to itch.io (web)
+        if: env.PUBLISH_ITCH == 'true'
+        working-directory: ${{ env.PROJECT_DIR }}
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        run: |
+          set -euo pipefail
+          CHANNEL="${{ github.event.inputs.channel }}"
+          [ -z "$CHANNEL" ] && CHANNEL="web"
+          VERSION="${{ steps.version.outputs.version }}"
+          test -n "$BUTLER_API_KEY"
+          butler push bin/wasm ${{ env.ITCH_USER }}/${{ env.ITCH_GAME }}:${CHANNEL} --userversion "${VERSION}"
+
+  build-and-push-macos-arm64:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      contains(fromJSON('["macos","macos-arm64","all"]'), github.event.inputs.build_platform)
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    env:
+      BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version
+        id: version
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          elif [ -f "project.conf" ]; then
+            VERSION=$(grep '^VERSION=' project.conf | cut -d= -f2)
+            VERSION="${VERSION:-latest}"
+          else
+            VERSION="latest"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Raylib + Release binary (arm64) + app bundle
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/external
+          if [ ! -d "build/external/raylib-master/.git" ]; then
+            git clone --depth 1 https://github.com/raysan5/raylib.git build/external/raylib-master
+          fi
+          cd build/external/raylib-master/src
+          make clean || true
+          make PLATFORM=PLATFORM_DESKTOP -j4
+          cd ../../../../
+          mkdir -p bin/Release
+          clang src/main.c -o bin/Release/quickstart-c-controller -O2 -std=c17 \
+            -DNDEBUG -DPLATFORM_DESKTOP -DGRAPHICS_API_OPENGL_33 \
+            -Wno-deprecated-declarations \
+            -I include -I build/external/raylib-master/src -I build/external/raylib-master/src/external \
+            -L build/external/raylib-master/src -lraylib \
+            -framework OpenGL -framework Cocoa -framework IOKit -framework CoreFoundation \
+            -framework CoreAudio -framework CoreVideo -framework AudioToolbox \
+            -arch arm64
+          test -x bin/Release/quickstart-c-controller
+          file bin/Release/quickstart-c-controller
+          make config=release_arm64 app-bundle
+
+      - name: Zip macOS arm64 (.app)
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -euo pipefail
+          rm -f quickstart-c-controller-macos-arm64.zip
+          ditto -c -k --keepParent quickstart-c-controller.app quickstart-c-controller-macos-arm64.zip
+
+      - name: Upload artifact (S3)
+        if: env.PUBLISH_S3 == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: quickstart-c-controller-macos-arm64-zip
+          path: ${{ env.PROJECT_DIR }}/quickstart-c-controller-macos-arm64.zip
+          if-no-files-found: error
+
+      - name: Setup butler
+        if: env.PUBLISH_ITCH == 'true'
+        uses: remarkablegames/setup-butler@v2
+        with:
+          butler-version: LATEST
+
+      - name: Push to itch.io (macOS arm64)
+        if: env.PUBLISH_ITCH == 'true'
+        working-directory: ${{ env.PROJECT_DIR }}
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        run: |
+          set -euo pipefail
+          CHANNEL="${{ github.event.inputs.channel }}"
+          if [ -z "$CHANNEL" ] || [ "$CHANNEL" = "web" ]; then CHANNEL="osx"; fi
+          VERSION="${{ steps.version.outputs.version }}"
+          test -n "$BUTLER_API_KEY"
+          butler push quickstart-c-controller-macos-arm64.zip ${{ env.ITCH_USER }}/${{ env.ITCH_GAME }}:${CHANNEL} --userversion "${VERSION}"
+
+  build-and-push-macos-x86_64:
+    runs-on: macos-15-intel
+    timeout-minutes: 45
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      contains(fromJSON('["macos","macos-x86_64","all"]'), github.event.inputs.build_platform)
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    env:
+      BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version
+        id: version
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          elif [ -f "project.conf" ]; then
+            VERSION=$(grep '^VERSION=' project.conf | cut -d= -f2)
+            VERSION="${VERSION:-latest}"
+          else
+            VERSION="latest"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Raylib + Release binary (x86_64) + app bundle
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/external
+          if [ ! -d "build/external/raylib-master/.git" ]; then
+            git clone --depth 1 https://github.com/raysan5/raylib.git build/external/raylib-master
+          fi
+          cd build/external/raylib-master/src
+          make clean || true
+          make PLATFORM=PLATFORM_DESKTOP -j4
+          cd ../../../../
+          mkdir -p bin/Release
+          clang src/main.c -o bin/Release/quickstart-c-controller -O2 -std=c17 \
+            -DNDEBUG -DPLATFORM_DESKTOP -DGRAPHICS_API_OPENGL_33 \
+            -Wno-deprecated-declarations \
+            -I include -I build/external/raylib-master/src -I build/external/raylib-master/src/external \
+            -L build/external/raylib-master/src -lraylib \
+            -framework OpenGL -framework Cocoa -framework IOKit -framework CoreFoundation \
+            -framework CoreAudio -framework CoreVideo -framework AudioToolbox \
+            -arch x86_64
+          test -x bin/Release/quickstart-c-controller
+          file bin/Release/quickstart-c-controller
+          make config=release_x64 app-bundle
+
+      - name: Zip macOS x86_64 (.app)
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -euo pipefail
+          rm -f quickstart-c-controller-macos-x86_64.zip
+          ditto -c -k --keepParent quickstart-c-controller.app quickstart-c-controller-macos-x86_64.zip
+
+      - name: Upload artifact (S3)
+        if: env.PUBLISH_S3 == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: quickstart-c-controller-macos-x86_64-zip
+          path: ${{ env.PROJECT_DIR }}/quickstart-c-controller-macos-x86_64.zip
+          if-no-files-found: error
+
+      - name: Setup butler
+        if: env.PUBLISH_ITCH == 'true'
+        uses: remarkablegames/setup-butler@v2
+        with:
+          butler-version: LATEST
+
+      - name: Push to itch.io (macOS x86_64)
+        if: env.PUBLISH_ITCH == 'true'
+        working-directory: ${{ env.PROJECT_DIR }}
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        run: |
+          set -euo pipefail
+          CHANNEL="${{ github.event.inputs.channel }}"
+          if [ -z "$CHANNEL" ] || [ "$CHANNEL" = "web" ]; then CHANNEL="macos-x86-64"; fi
+          VERSION="${{ steps.version.outputs.version }}"
+          test -n "$BUTLER_API_KEY"
+          butler push quickstart-c-controller-macos-x86_64.zip ${{ env.ITCH_USER }}/${{ env.ITCH_GAME }}:${CHANNEL} --userversion "${VERSION}"
+
+  build-and-push-windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      contains(fromJSON('["windows","all"]'), github.event.inputs.build_platform)
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    env:
+      BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Clone raylib for MinGW build
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "raylib")) {
+            git clone --depth 1 https://github.com/raysan5/raylib.git raylib
+          }
+
+      - name: Extract version
+        id: version
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          elif [ -f "project.conf" ]; then
+            VERSION=$(grep '^VERSION=' project.conf | cut -d= -f2)
+            VERSION="${VERSION:-latest}"
+          else
+            VERSION="latest"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Install MinGW
+        shell: pwsh
+        run: |
+          choco install mingw -y --no-progress
+          "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Build raylib static
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: pwsh
+        run: |
+          Set-Location raylib\src
+          mingw32-make -j4
+          Set-Location ..\..
+
+      - name: Build Windows executable + zip
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "release","obj" -Force | Out-Null
+          windres src\application.rc -o obj\resources.o -I src
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $files = @("src\main.c", "obj\resources.o")
+          gcc @files -o release\quickstart-c-controller.exe -O2 -mwindows `
+            -I include -I raylib\src -L raylib\src `
+            -lraylib -lgdi32 -lwinmm -static
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          New-Item -ItemType Directory -Path "release\resources" -Force | Out-Null
+          robocopy resources release\resources /E /NFL /NDL /NJH /NJS /NC /NS
+          if ($LASTEXITCODE -ge 8) { exit 1 }
+          $global:LASTEXITCODE = 0
+          Remove-Item quickstart-c-controller-windows.zip -ErrorAction SilentlyContinue
+          Compress-Archive -Path "release\*" -DestinationPath "quickstart-c-controller-windows.zip" -Force
+
+      - name: Upload artifact (S3)
+        if: env.PUBLISH_S3 == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: quickstart-c-controller-windows-zip
+          path: ${{ env.PROJECT_DIR }}/quickstart-c-controller-windows.zip
+          if-no-files-found: error
+
+      - name: Setup butler
+        if: env.PUBLISH_ITCH == 'true'
+        uses: remarkablegames/setup-butler@v2
+        with:
+          butler-version: LATEST
+
+      - name: Push to itch.io (Windows)
+        if: env.PUBLISH_ITCH == 'true'
+        working-directory: ${{ env.PROJECT_DIR }}
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        shell: pwsh
+        run: |
+          $CHANNEL = "${{ github.event.inputs.channel }}"
+          if ([string]::IsNullOrWhiteSpace($CHANNEL) -or $CHANNEL -eq "web") { $CHANNEL = "windows" }
+          $VERSION = "${{ steps.version.outputs.version }}"
+          if ([string]::IsNullOrWhiteSpace($env:BUTLER_API_KEY)) {
+            Write-Host "::error::BUTLER_API_KEY missing"
+            exit 1
+          }
+          butler push quickstart-c-controller-windows.zip ${{ env.ITCH_USER }}/${{ env.ITCH_GAME }}:${CHANNEL} --userversion $VERSION
+
+  publish-s3:
+    runs-on: ubuntu-latest
+    needs:
+      - resolve-publish-flags
+      - read-version
+      - build-and-push-web
+      - build-and-push-macos-arm64
+      - build-and-push-macos-x86_64
+      - build-and-push-windows
+    if: |
+      always() &&
+      needs.resolve-publish-flags.outputs.publish_s3 == 'true' &&
+      needs.read-version.result == 'success' &&
+      (needs.build-and-push-web.result == 'success' ||
+       needs.build-and-push-macos-arm64.result == 'success' ||
+       needs.build-and-push-macos-x86_64.result == 'success' ||
+       needs.build-and-push-windows.result == 'success')
+
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_PUBLIC_SOFTWARE_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Upload binaries and merge catalog (apps prototype)
+        env:
+          BUCKET: ${{ secrets.S3_PUBLIC_SOFTWARE_BUCKET }}
+          VERSION: ${{ needs.read-version.outputs.version }}
+          GAME_KEY: ${{ env.S3_GAME_KEY }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+        run: |
+          set -euo pipefail
+          BUCKET="${BUCKET:-prod-nicapotato-public-software}"
+          GAME="${GAME_KEY}"
+          VER="${VERSION}"
+          REGION="${AWS_REGION}"
+          BASE="https://${BUCKET}.s3.${REGION}.amazonaws.com"
+          CATEGORY="${{ env.S3_CATEGORY }}"
+          MATURITY="${{ env.S3_MATURITY }}"
+          IW="${{ env.S3_IFRAME_WIDTH }}"
+          IH="${{ env.S3_IFRAME_HEIGHT }}"
+          ROOT_JSON_KEY="games"
+          if [ "$CATEGORY" = "apps" ]; then ROOT_JSON_KEY="apps"; fi
+          PREFIX="${CATEGORY}/${MATURITY}/${GAME}/${VER}"
+          CATALOG_KEY="${CATEGORY}/${MATURITY}/catalog.json"
+
+          WZIP="dist/quickstart-c-controller-wasm-zip/quickstart-c-controller_wasm.zip"
+          WDIR="dist/quickstart-c-controller-wasm-exploded"
+          MZIP_ARM="dist/quickstart-c-controller-macos-arm64-zip/quickstart-c-controller-macos-arm64.zip"
+          MZIP_X64="dist/quickstart-c-controller-macos-x86_64-zip/quickstart-c-controller-macos-x86_64.zip"
+          WINZIP="dist/quickstart-c-controller-windows-zip/quickstart-c-controller-windows.zip"
+
+          sudo apt-get update -qq && sudo apt-get install -y jq
+
+          if ! aws s3 cp "s3://${BUCKET}/${CATALOG_KEY}" catalog.json 2>/dev/null; then
+            jq -n --arg k "$ROOT_JSON_KEY" '{($k): {}}' > catalog.json
+          fi
+
+          PLAT=$(jq -c --arg root "$ROOT_JSON_KEY" --arg game "$GAME" --arg ver "$VER" \
+            '(.[$root][$game].versions[$ver] // {}).platforms // {}' catalog.json)
+
+          RELEASED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          if [ -f "$WZIP" ]; then
+            Z="${BASE}/${PREFIX}/quickstart-c-controller-wasm.zip"
+            S=$(sha256sum "$WZIP" | awk '{print $1}')
+            PLAY="${BASE}/${PREFIX}/wasm/index.html"
+            aws s3 cp "$WZIP" "s3://${BUCKET}/${PREFIX}/quickstart-c-controller-wasm.zip"
+            printf '%s  quickstart-c-controller-wasm.zip\n' "$S" | aws s3 cp - "s3://${BUCKET}/${PREFIX}/quickstart-c-controller-wasm.zip.sha256" --content-type text/plain
+            PLAT=$(jq -n -c --argjson p "$PLAT" --arg z "$Z" --arg s "$S" --arg play "$PLAY" \
+              '$p + {wasm: {zip_url: $z, sha256: $s, play_url: $play}}')
+            echo "✅ Uploaded wasm zip"
+          fi
+
+          if [ -d "$WDIR" ]; then
+            cd "$WDIR"
+            find . -type f | while IFS= read -r f; do
+              rel="${f#./}"
+              case "$rel" in
+                *.html) ct=text/html ;;
+                *.js)   ct=application/javascript ;;
+                *.wasm) ct=application/wasm ;;
+                *.data) ct=application/octet-stream ;;
+                *.png)  ct=image/png ;;
+                *.jpg|*.jpeg) ct=image/jpeg ;;
+                *.json) ct=application/json ;;
+                *)      ct=application/octet-stream ;;
+              esac
+              aws s3 cp "$f" "s3://${BUCKET}/${PREFIX}/wasm/${rel}" --content-type "$ct"
+            done
+            cd - >/dev/null
+            echo "✅ Uploaded wasm tree"
+          fi
+
+          if [ -f "$MZIP_ARM" ]; then
+            Z="${BASE}/${PREFIX}/quickstart-c-controller-macos-arm64.zip"
+            S=$(sha256sum "$MZIP_ARM" | awk '{print $1}')
+            aws s3 cp "$MZIP_ARM" "s3://${BUCKET}/${PREFIX}/quickstart-c-controller-macos-arm64.zip"
+            printf '%s  quickstart-c-controller-macos-arm64.zip\n' "$S" | aws s3 cp - "s3://${BUCKET}/${PREFIX}/quickstart-c-controller-macos-arm64.zip.sha256" --content-type text/plain
+            PLAT=$(jq -n -c --argjson p "$PLAT" --arg z "$Z" --arg s "$S" \
+              '$p + {macos: {zip_url: $z, sha256: $s}, macos_arm64: {zip_url: $z, sha256: $s}}')
+            echo "✅ Uploaded mac arm zip"
+          fi
+
+          if [ -f "$MZIP_X64" ]; then
+            Z="${BASE}/${PREFIX}/quickstart-c-controller-macos-x86_64.zip"
+            S=$(sha256sum "$MZIP_X64" | awk '{print $1}')
+            aws s3 cp "$MZIP_X64" "s3://${BUCKET}/${PREFIX}/quickstart-c-controller-macos-x86_64.zip"
+            printf '%s  quickstart-c-controller-macos-x86_64.zip\n' "$S" | aws s3 cp - "s3://${BUCKET}/${PREFIX}/quickstart-c-controller-macos-x86_64.zip.sha256" --content-type text/plain
+            PLAT=$(jq -n -c --argjson p "$PLAT" --arg z "$Z" --arg s "$S" \
+              '$p + {macos_x86_64: {zip_url: $z, sha256: $s}}')
+            echo "✅ Uploaded mac x86 zip"
+          fi
+
+          if [ -f "$WINZIP" ]; then
+            Z="${BASE}/${PREFIX}/quickstart-c-controller-windows.zip"
+            S=$(sha256sum "$WINZIP" | awk '{print $1}')
+            aws s3 cp "$WINZIP" "s3://${BUCKET}/${PREFIX}/quickstart-c-controller-windows.zip"
+            printf '%s  quickstart-c-controller-windows.zip\n' "$S" | aws s3 cp - "s3://${BUCKET}/${PREFIX}/quickstart-c-controller-windows.zip.sha256" --content-type text/plain
+            PLAT=$(jq -n -c --argjson p "$PLAT" --arg z "$Z" --arg s "$S" \
+              '$p + {windows: {zip_url: $z, sha256: $s}}')
+            echo "✅ Uploaded windows zip"
+          fi
+
+          NEW=$(jq -n \
+            --arg released "$RELEASED" \
+            --arg iw "$IW" \
+            --arg ih "$IH" \
+            --argjson platforms "$PLAT" \
+            '{
+              released_at: $released,
+              iframe: {width: ($iw | tonumber), height: ($ih | tonumber)},
+              platforms: $platforms
+            }')
+
+          jq --arg game "$GAME" --arg ver "$VER" --arg root "$ROOT_JSON_KEY" --argjson entry "$NEW" \
+            '.[$root] //= {}
+            | .[$root][$game] //= {display_name: "Quickstart C Controller", versions: {}}
+            | .[$root][$game].versions //= {}
+            | .[$root][$game].versions[$ver] = $entry' catalog.json > catalog.merged.json
+
+          aws s3 cp catalog.merged.json "s3://${BUCKET}/${CATALOG_KEY}" --content-type application/json
+          echo "✅ Published s3://${BUCKET}/${PREFIX}/ and ${CATALOG_KEY}"
