@@ -36,3 +36,5 @@ ga-quickstart-c-linux-x86_64: ga-check-gh
 ga-quickstart-c-linux-arm64: ga-check-gh
 	@$(MAKE) ga-quickstart-c GA_BUILD_PLATFORM=linux-arm64
 
+# c-controller
+# gh workflow run quickstart-c-controller-cicd.yml -f build_platform=all

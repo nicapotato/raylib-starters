@@ -8,7 +8,10 @@
 ********************************************************************************************/
 
 #include <stdbool.h>
+#include <stdio.h>
 #include "raylib.h"
+
+#define QUICKSTART_MAX_GAMEPADS 4
 
 // NOTE: Gamepad name ID depends on drivers and OS
 #define XBOX_ALIAS_1 "xbox"
@@ -32,6 +35,94 @@ static bool IsXboxStyleName(const char *nameLower)
 {
     return (TextFindIndex(nameLower, XBOX_ALIAS_1) > -1)
         || (TextFindIndex(nameLower, XBOX_ALIAS_2) > -1);
+}
+
+static void UpdateGamepadDeviceDropdown(
+    int *gamepad,
+    bool *dropdownOpen,
+    Rectangle header,
+    float rowH)
+{
+    Vector2 mouse = GetMousePosition();
+
+    if (!IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) return;
+
+    if (CheckCollisionPointRec(mouse, header))
+    {
+        *dropdownOpen = !*dropdownOpen;
+        return;
+    }
+
+    if (!*dropdownOpen) return;
+
+    Rectangle list = { header.x, header.y + header.height, header.width, rowH * (float)QUICKSTART_MAX_GAMEPADS };
+    if (CheckCollisionPointRec(mouse, list))
+    {
+        int idx = (int)((mouse.y - list.y) / rowH);
+        if (idx >= 0 && idx < QUICKSTART_MAX_GAMEPADS) *gamepad = idx;
+    }
+    *dropdownOpen = false;
+}
+
+static void DrawGamepadDeviceDropdown(
+    int gamepad,
+    bool dropdownOpen,
+    Rectangle header,
+    float rowH)
+{
+    const int fontSize = 10;
+    DrawRectangleRec(header, (Color){ 245, 245, 250, 255 });
+    DrawRectangleLinesEx(header, 1.0f, DARKGRAY);
+
+    const char *selName = IsGamepadAvailable(gamepad) ? GetGamepadName(gamepad) : "Not connected";
+    char headerLine[96];
+    snprintf(headerLine, sizeof headerLine, "Device: GP%d | %.30s", gamepad, selName);
+    DrawText(headerLine, (int)(header.x + 8), (int)(header.y + 8), fontSize, BLACK);
+
+    float caretX = header.x + header.width - 16.0f;
+    float cy = header.y + header.height * 0.5f;
+    if (dropdownOpen)
+    {
+        DrawTriangle(
+            (Vector2){ caretX, cy - 4.0f },
+            (Vector2){ caretX - 4.0f, cy + 3.0f },
+            (Vector2){ caretX + 4.0f, cy + 3.0f },
+            DARKGRAY);
+    }
+    else
+    {
+        DrawTriangle(
+            (Vector2){ caretX - 4.0f, cy - 3.0f },
+            (Vector2){ caretX + 4.0f, cy - 3.0f },
+            (Vector2){ caretX, cy + 4.0f },
+            DARKGRAY);
+    }
+
+    if (!dropdownOpen) return;
+
+    Rectangle listBg = { header.x, header.y + header.height, header.width, rowH * (float)QUICKSTART_MAX_GAMEPADS };
+    DrawRectangleRec(listBg, Fade(WHITE, 0.94f));
+    DrawRectangleLinesEx(listBg, 1.0f, DARKGRAY);
+
+    Vector2 mouse = GetMousePosition();
+    for (int i = 0; i < QUICKSTART_MAX_GAMEPADS; i++)
+    {
+        Rectangle row = { header.x, header.y + header.height + i * rowH, header.width, rowH };
+        bool hover = CheckCollisionPointRec(mouse, row);
+        Color rowBg = (i == gamepad)
+            ? (Color){ 180, 220, 255, 255 }
+            : (hover ? (Color){ 235, 235, 255, 255 } : RAYWHITE);
+        DrawRectangleRec(row, rowBg);
+        DrawRectangleLinesEx(row, 1.0f, Fade(DARKGRAY, 0.35f));
+
+        char line[128];
+        if (IsGamepadAvailable(i))
+            snprintf(line, sizeof line, " GP%d  %.70s", i, GetGamepadName(i));
+        else
+            snprintf(line, sizeof line, " GP%d  (not connected)", i);
+        DrawText(line, (int)(row.x + 6), (int)(row.y + 5), fontSize,
+                 IsGamepadAvailable(i) ? BLACK : GRAY);
+    }
 }
 
 //------------------------------------------------------------------------------------
@@ -64,7 +155,12 @@ int main(void)
     SetTargetFPS(60);               // Set our game to run at 60 frames-per-second
     //--------------------------------------------------------------------------------------
 
-    int gamepad = 0; // which gamepad to display
+    int gamepad = 0;
+    bool gamepadDropdownOpen = false;
+    const float dropdownW = 320.0f;
+    const float dropdownHeaderH = 28.0f;
+    const float dropdownRowH = 24.0f;
+    Rectangle gamepadDropdownHeader = { (float)screenWidth - dropdownW - 10.0f, 6.0f, dropdownW, dropdownHeaderH };
 
     // Main game loop
     while (!WindowShouldClose())    // Detect window close button or ESC key
@@ -72,8 +168,11 @@ int main(void)
         // Update
         //----------------------------------------------------------------------------------
         if (IsKeyPressed(KEY_LEFT) && gamepad > 0) gamepad--;
-        if (IsKeyPressed(KEY_RIGHT)) gamepad++;
+        if (IsKeyPressed(KEY_RIGHT) && gamepad < QUICKSTART_MAX_GAMEPADS - 1) gamepad++;
         Vector2 mousePosition = GetMousePosition();
+
+        gamepadDropdownHeader = (Rectangle){ (float)screenWidth - dropdownW - 10.0f, 6.0f, dropdownW, dropdownHeaderH };
+        UpdateGamepadDeviceDropdown(&gamepad, &gamepadDropdownOpen, gamepadDropdownHeader, dropdownRowH);
 
         vibrateButton = (Rectangle){ 10, 70.0f + 20*GetGamepadAxisCount(gamepad) + 20, 75, 24 };
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(mousePosition, vibrateButton)) SetGamepadVibration(gamepad, 1.0, 1.0, 1.0);
@@ -278,6 +377,10 @@ int main(void)
                 DrawText(TextFormat("GP%d: NOT DETECTED", gamepad), 10, 10, 10, GRAY);
                 DrawTexture(texXboxPad, 0, 0, LIGHTGRAY);
             }
+
+            DrawText("Slot: top-right device menu, or <- / -> keys", 10, 405, 9, GRAY);
+
+            DrawGamepadDeviceDropdown(gamepad, gamepadDropdownOpen, gamepadDropdownHeader, dropdownRowH);
 
         EndDrawing();
         //----------------------------------------------------------------------------------
