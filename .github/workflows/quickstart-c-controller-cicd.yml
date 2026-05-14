@@ -42,7 +42,7 @@ env:
   ITCH_GAME: quickstart-c-controller
   AWS_REGION: eu-west-2
   S3_CATEGORY: apps
-  S3_MATURITY: prototype
+  S3_MATURITY: quickstart
   S3_GAME_KEY: quickstart-c-controller
   S3_IFRAME_WIDTH: '800'
   S3_IFRAME_HEIGHT: '450'

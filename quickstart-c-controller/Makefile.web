@@ -12,6 +12,8 @@ SRC_DIR = src
 INCLUDE_DIR = include
 BUILD_DIR = bin/wasm
 RESOURCES_DIR = resources
+# Staged copy for --preload-file …@/resources (same pattern as cathulusweeper Makefile.web)
+WASM_RESOURCE_STAGING = $(BUILD_DIR)/_wasm_resources
 
 # Compiler
 CC = emcc
@@ -29,16 +31,11 @@ CFLAGS = -Os -Wall -std=c99 -D_DEFAULT_SOURCE -Wno-missing-braces -Wunused-resul
 # Include Paths
 CFLAGS += -I$(INCLUDE_DIR) -I$(RAYLIB_SRC) -I$(RAYLIB_SRC)/external
 
-# Linker Flags
-# -lraylib : Link against libraylib
-# -s USE_GLFW=3 : Use Emscripten's GLFW3 port
-# -s WASM=1 : Output WebAssembly
-# -s ALLOW_MEMORY_GROWTH=1 : Allow memory to grow
-# --preload-file $(RESOURCES_DIR) : Preload resources directory
-# --shell-file $(RAYLIB_SRC)/shell.html : Use raylib's shell template
+# Linker Flags (aligned with sweeper/cathulusweeper/Makefile.web)
+# -o bin/wasm/index.html → emits index.html, index.js, index.wasm, index.data (stable play URL / itch / S3)
 LDFLAGS = -L$(RAYLIB_SRC) -lraylib.web
-LDFLAGS += -s USE_GLFW=3 -s WASM=1 -s ALLOW_MEMORY_GROWTH=1 -s ASYNCIFY
-LDFLAGS += --preload-file $(RESOURCES_DIR)
+LDFLAGS += -s USE_GLFW=3 -s WASM=1 -s ALLOW_MEMORY_GROWTH=1 -s TOTAL_MEMORY=128MB -s STACK_SIZE=2MB -s ASYNCIFY -s ASSERTIONS=1
+LDFLAGS += --preload-file $(WASM_RESOURCE_STAGING)@/resources
 LDFLAGS += --shell-file $(RAYLIB_SRC)/minshell.html
 
 # Source Files
@@ -54,10 +51,11 @@ S3_BASE_PATH = s3://dev-mindtricks-user-content/apps/prototype/quickstart-c-cont
 # Default Target
 .PHONY: all clean serve kill-port package upload
 
-all: $(BUILD_DIR)/$(PROJECT_NAME).html
+all: $(BUILD_DIR)/index.html
 
 package: all
 	@echo "Packaging for Web..."
+	@rm -rf $(WASM_RESOURCE_STAGING)
 	@rm -f $(BUILD_DIR)/$(PROJECT_NAME)_wasm.zip
 	@cd $(BUILD_DIR) && zip -r $(PROJECT_NAME)_wasm.zip *
 	@echo "Package created: $(BUILD_DIR)/$(PROJECT_NAME)_wasm.zip"
@@ -70,10 +68,10 @@ upload: package
 	fi
 	@echo "Uploading to $(S3_BASE_PATH)/"
 	@aws s3 cp "$(BUILD_DIR)/$(PROJECT_NAME)_wasm.zip" "$(S3_BASE_PATH)/"
-	@aws s3 cp "$(BUILD_DIR)/$(PROJECT_NAME).html" "$(S3_BASE_PATH)/index.html"
-	@aws s3 cp "$(BUILD_DIR)/$(PROJECT_NAME).js" "$(S3_BASE_PATH)/"
-	@aws s3 cp "$(BUILD_DIR)/$(PROJECT_NAME).wasm" "$(S3_BASE_PATH)/"
-	@aws s3 cp "$(BUILD_DIR)/$(PROJECT_NAME).data" "$(S3_BASE_PATH)/"
+	@aws s3 cp "$(BUILD_DIR)/index.html" "$(S3_BASE_PATH)/index.html"
+	@aws s3 cp "$(BUILD_DIR)/index.js" "$(S3_BASE_PATH)/"
+	@aws s3 cp "$(BUILD_DIR)/index.wasm" "$(S3_BASE_PATH)/"
+	@aws s3 cp "$(BUILD_DIR)/index.data" "$(S3_BASE_PATH)/"
 	@echo "Upload complete."
 
 kill-port:
@@ -89,10 +87,14 @@ $(RAYLIB_SRC)/libraylib.web.a:
 	@echo "Building Raylib for Web..."
 	cd $(RAYLIB_SRC) && $(MAKE) PLATFORM=PLATFORM_WEB
 
-# Build Project
-$(BUILD_DIR)/$(PROJECT_NAME).html: $(SRCS) $(RAYLIB_SRC)/libraylib.web.a | $(BUILD_DIR)
+# Build Project → index.* (matches cathulusweeper / public-software wasm/ layout)
+$(BUILD_DIR)/index.html: $(SRCS) $(RAYLIB_SRC)/libraylib.web.a | $(BUILD_DIR)
 	@echo "Building $(PROJECT_NAME) for Web..."
+	@rm -rf $(WASM_RESOURCE_STAGING)
+	@mkdir -p $(WASM_RESOURCE_STAGING)
+	@rsync -a $(RESOURCES_DIR)/ $(WASM_RESOURCE_STAGING)/
 	$(CC) -o $@ $(SRCS) $(CFLAGS) $(LDFLAGS)
+	@rm -rf $(WASM_RESOURCE_STAGING)
 
 # Clean
 clean:
