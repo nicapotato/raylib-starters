@@ -1,46 +1,22 @@
 # raylib-starters
 
-Templates and CI for small [raylib](https://www.raylib.com/) projects.
+Starter templates for small games and tools built with **[raylib](https://www.raylib.com/)** — a minimal C library for graphics, input, audio, and windowing. Each folder under this repo is a self-contained sample you can copy or extend.
 
-## Quickstart C — CI/CD
+## Raylib
 
-The sample project lives under [`quickstart-c/`](quickstart-c/). Builds are **manual** (`workflow_dispatch` only): run from the Actions tab or with the GitHub CLI.
+Raylib wraps platform glue (window, graphics context, input, audio) behind a simple C API. You draw with textures, shapes, and shaders; desktop builds typically use OpenGL and GLFW under the hood. The same ideas carry over to WebAssembly builds where the project opts into Emscripten.
 
-### Full release (all targets, S3 catalog, itch)
+## Stack (how these projects are put together)
 
-- Workflow: [`quickstart-c.yml`](.github/workflows/quickstart-c.yml)
-- Badge: [![Quickstart C full](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c.yml/badge.svg)](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c.yml)
+- **Language-first templates** — C and C++ raylib samples live beside bindings-style starters (**Lua**, **Python**, **Rust**, **Zig**, **Go**) so you can pick the layer you want.
+- **C quickstarts** — plain **C99**, **clang**/**GCC**, project-local **Makefile** workflows, assets under `resources/`, and optional **fragment shaders** where the demo needs them.
+- **Extensions where the sample demands it** — e.g. **Aseprite** import helpers or **gamepad** probing in the dedicated controller template, without pulling that complexity into the minimal C baseline.
 
-```bash
-gh workflow run quickstart-c.yml --ref "$(git branch --show-current)" -f build_platform=all
-# or, from this repo with GNU make:
-make ga-quickstart-c-all
-```
+## What’s in the sample apps
 
-### Per-target builds (one badge per project / platform / CPU)
+- **`quickstart-c/`** — Flagship **C** demo: a tiny **menu → fullscreen shader** flow (bouncing sprite, wave shader, optional background music when the asset is present). Good default for “how does raylib + resources + shaders hang together?”
+- **`quickstart-c-aesprite/`** — Same family extended with **Aseprite** sheets/tags as extra app states.
+- **`quickstart-c-controller/`** — **Gamepad** input probe UI (adapted from raylib’s gamepad example).
+- **`quickstart-c-pufferlib/`**, **`quickstart-cpp/`**, **`quickstart-go/`**, **`quickstart-lua/`**, **`quickstart-python/`**, **`quickstart-rust/`**, **`quickstart-zig/`** — Parallel starters for other languages and experiments.
 
-GitHub only loads workflow files as **`.github/workflows/<name>.yml`** at the root of that folder (no subdirectories). Wrapper files use the `quickstart-c-*.yml` prefix next to [`quickstart-c.yml`](.github/workflows/quickstart-c.yml) (reusable `workflow_call` must stay in that flat path too). Each row is a **separate** workflow so the status badge reflects **that** build only.
-
-| Project | Platform | CPU / arch | Status |
-|--------|----------|------------|--------|
-| quickstart-c | Web | WASM | [![WASM](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c-web.yml/badge.svg)](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c-web.yml) |
-| quickstart-c | macOS | arm64 | [![macOS arm64](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c-macos-arm64.yml/badge.svg)](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c-macos-arm64.yml) |
-| quickstart-c | macOS | x86_64 | [![macOS x86_64](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c-macos-x86_64.yml/badge.svg)](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c-macos-x86_64.yml) |
-| quickstart-c | Linux | x86_64 | [![Linux x86_64](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c-linux-x86_64.yml/badge.svg)](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c-linux-x86_64.yml) |
-| quickstart-c | Linux | arm64 | [![Linux arm64](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c-linux-arm64.yml/badge.svg)](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c-linux-arm64.yml) |
-| quickstart-c | Windows | x86_64 | [![Windows x86_64](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c-windows-x86_64.yml/badge.svg)](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c-windows-x86_64.yml) |
-| quickstart-c | Windows | arm64 | [![Windows arm64](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c-windows-arm64.yml/badge.svg)](https://github.com/nicapotato/raylib-starters/actions/workflows/quickstart-c-windows-arm64.yml) |
-
-Thin workflows call the same implementation ([`quickstart-c.yml`](.github/workflows/quickstart-c.yml)) with the matching `build_platform` input. Example:
-
-```bash
-gh workflow run quickstart-c-linux-arm64.yml --ref "$(git branch --show-current)"
-```
-
-Release **version** always comes from [`quickstart-c/project.conf`](quickstart-c/project.conf) (`VERSION=…`). Optional **`channel`** (HTML5 / `web` push only) when you run **`quickstart-c.yml`** directly:
-
-```bash
-make ga-quickstart-c GA_BUILD_PLATFORM=web GA_CHANNEL=web
-```
-
-Full `build_platform=all` pushes HTML5 to the `web` channel and each desktop `.zip` to its own channel: `macos-arm64`, `macos-x86-64`, `linux-x86-64`, `linux-arm64`, `windows-x86-64`, `windows-arm64`. (The WASM zip is still published to S3 for the catalog; it is not duplicated on itch.)
+Shared media can sit under [`resources/`](resources/) at the repo root when samples reuse tracks or textures.

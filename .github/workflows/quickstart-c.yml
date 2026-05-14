@@ -25,15 +25,6 @@ on:
         required: false
         default: ''
         type: string
-  workflow_call:
-    inputs:
-      build_platform:
-        required: true
-        type: string
-      channel:
-        required: false
-        type: string
-        default: ''
 
 permissions:
   contents: read

@@ -2,6 +2,7 @@
 # Run from the raylib-starters repo root.
 
 .PHONY: ga-check-gh ga-quickstart-c ga-quickstart-c-all ga-quickstart-c-web ga-quickstart-c-linux ga-quickstart-c-linux-x86_64 ga-quickstart-c-linux-arm64
+.PHONY: ga-quickstart-c-macos ga-quickstart-c-macos-arm64 ga-quickstart-c-macos-x86_64 ga-quickstart-c-windows ga-quickstart-c-windows-x86_64 ga-quickstart-c-windows-arm64
 .PHONY: ga-quickstart-c-controller ga-quickstart-c-controller-all
 
 BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
@@ -26,18 +27,6 @@ ga-quickstart-c: ga-check-gh ## Dispatch main quickstart-c workflow (GA_BUILD_PL
 ga-quickstart-c-all: ga-check-gh ## Full release build + S3 + itch (build_platform=all)
 	@$(MAKE) ga-quickstart-c GA_BUILD_PLATFORM=all
 
-# Thin wrappers (same as: make ga-quickstart-c GA_BUILD_PLATFORM=<value>)
-ga-quickstart-c-web: ga-check-gh
-	@$(MAKE) ga-quickstart-c GA_BUILD_PLATFORM=web
-
-ga-quickstart-c-linux: ga-check-gh
-	@$(MAKE) ga-quickstart-c GA_BUILD_PLATFORM=linux
-
-ga-quickstart-c-linux-x86_64: ga-check-gh
-	@$(MAKE) ga-quickstart-c GA_BUILD_PLATFORM=linux-x86_64
-
-ga-quickstart-c-linux-arm64: ga-check-gh
-	@$(MAKE) ga-quickstart-c GA_BUILD_PLATFORM=linux-arm64
 
 # quickstart-c-controller → .github/workflows/quickstart-c-controller-cicd.yml
 ga-quickstart-c-controller: ga-check-gh ## Dispatch controller CI/CD (GA_BUILD_PLATFORM=all|web|macos-arm64|…)
