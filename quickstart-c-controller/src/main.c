@@ -139,9 +139,6 @@ int main(void)
 
     InitWindow(screenWidth, screenHeight, "quickstart-c-controller — gamepad input");
 
-    // Asset paths are relative to CWD; macOS .app bundles set CWD elsewhere when launched from Finder/Itch.
-    ChangeDirectory(GetApplicationDirectory());
-
     Texture2D texPs3Pad = LoadTexture("resources/ps3.png");
     Texture2D texXboxPad = LoadTexture("resources/xbox.png");
 
